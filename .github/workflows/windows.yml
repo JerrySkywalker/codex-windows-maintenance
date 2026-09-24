@@ -1,0 +1,29 @@
+name: Windows maintenance checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate structure and script syntax
+        shell: pwsh
+        run: |
+          $required = @('README.md', 'LICENSE', 'manifest.json', 'CONTRIBUTING.md', 'scripts/bootstrap.ps1', 'scripts/qualify.ps1', 'scripts/port.ps1', 'harness/windows-presentation/observe-windows.ps1', 'harness/windows-presentation/mock_responses.py', 'harness/windows-presentation/mcp_smoke_server.py', 'harness/windows-presentation/hook_smoke.py', 'harness/windows-presentation/POLICY.md', 'harness/windows-presentation/SPAWN-INVENTORY.md')
+          foreach ($path in $required) { if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing $path" } }
+          foreach ($path in (Get-ChildItem scripts,harness -Recurse -Filter '*.ps1').FullName) {
+            $tokens = $null; $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
+            if ($errors.Count) { throw "PowerShell syntax errors in $path`: $($errors -join '; ')" }
+          }
+          $manifest = Get-Content manifest.json -Raw | ConvertFrom-Json
+          if (-not $manifest.downstreamTag -or -not $manifest.downstreamCommit -or -not $manifest.downstreamTree) { throw 'Incomplete source mapping' }
+          python -c "import ast, pathlib; [ast.parse(path.read_text(encoding='utf-8')) for path in pathlib.Path('harness').rglob('*.py')]"

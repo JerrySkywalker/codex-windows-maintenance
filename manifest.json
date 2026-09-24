@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "upstreamRepository": "https://github.com/openai/codex",
+  "upstreamVersion": "0.156.0",
+  "upstreamCommit": "fe74a774532af67b5a4a3dec03ce9469e17f89af",
+  "downstreamRepository": "codex-windows-patched",
+  "downstreamTag": "v0.156.0-wbp-r1",
+  "downstreamCommit": "44093ea5c1d33f008f6035ec1a519e1247f04295",
+  "downstreamTree": "2a9dacb7e34dd719730946eaefcf755c47aae56e",
+  "target": "x86_64-pc-windows-msvc",
+  "packageVariant": "codex",
+  "cargoProfile": "release"
+}

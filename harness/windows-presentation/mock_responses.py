@@ -34,22 +34,26 @@ def completed(response_id):
     }
 
 
-def function_call(response_id, call_id, command):
+def function_call(response_id, call_id, command, tool_mode="shell"):
     arguments = json.dumps(
         {"cmd": command, "yield_time_ms": 10000, "max_output_tokens": 2000},
         separators=(",", ":"),
     )
+    item = {
+        "type": "function_call", "call_id": call_id,
+        "name": "exec_command", "arguments": arguments,
+    }
+    if tool_mode == "code_mode_only":
+        item = {
+            "type": "custom_tool_call", "call_id": call_id, "name": "exec",
+            "input": "text(JSON.stringify(await tools.exec_command(" + arguments + ")));",
+        }
     return sse(
         [
             created(response_id),
             {
                 "type": "response.output_item.done",
-                "item": {
-                    "type": "function_call",
-                    "call_id": call_id,
-                    "name": "exec_command",
-                    "arguments": arguments,
-                },
+                "item": item,
             },
             completed(response_id),
         ]
@@ -80,6 +84,10 @@ def main():
     parser.add_argument("--request-log", required=True)
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--shell-marker", required=True)
+    parser.add_argument("--tool-mode", choices=("shell", "code_mode_only"), default="shell")
+    parser.add_argument("--powershell", default="powershell")
+    parser.add_argument("--python")
+    parser.add_argument("--rg")
     args = parser.parse_args()
 
     port_file = Path(args.port_file)
@@ -89,8 +97,9 @@ def main():
     state = {"count": 0}
 
     quoted_shell_marker = str(shell_marker).replace("'", "''")
+    shell_program = "powershell" if args.powershell == "powershell" else '& "' + args.powershell + '"'
     shell_command = (
-        "powershell -NoProfile -Command \"Set-Content -LiteralPath "
+        shell_program + " -NoProfile -Command \"Set-Content -LiteralPath "
         f"'{quoted_shell_marker}' "
         "-Value 'shell-ok' -Encoding utf8\""
     )
@@ -99,6 +108,11 @@ def main():
         "git rev-parse --show-toplevel",
         "where.exe rg",
     ]
+    if args.tool_mode == "code_mode_only":
+        if not args.python or not args.rg:
+            parser.error("--python and --rg required for managed Code Mode smoke")
+        probe = Path(__file__).with_name("bundled_rg_probe.py")
+        commands[2] = '& "' + args.python + '" "' + str(probe) + '" "' + args.rg + '"'
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, _format, *_values):
@@ -124,7 +138,7 @@ def main():
 
             if sequence <= len(commands):
                 payload = function_call(
-                    f"resp-{sequence}", f"call-{sequence}", commands[sequence - 1]
+                    f"resp-{sequence}", f"call-{sequence}", commands[sequence - 1], args.tool_mode
                 )
             else:
                 payload = assistant_message(f"resp-{sequence}")

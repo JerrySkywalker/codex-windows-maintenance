@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory)][string]$OutputPath,
-    [int]$DurationSeconds = 15
+    [int]$DurationSeconds = 15,
+    [string]$ReadyPath,
+    [string]$StopPath
 )
 
 $source = @'
@@ -87,16 +89,23 @@ $parent = Split-Path -Parent $OutputPath
 New-Item -ItemType Directory -Force -Path $parent | Out-Null
 "utc`twin_event`tpid`tprocess_started_utc`tprocess`twindow_hex`tclass`ttitle`tforeground_at_callback" | Set-Content -LiteralPath $OutputPath -Encoding utf8
 [CodexWindowObserver]::Start()
+$stopMarkerObserved = $false
+if ($ReadyPath) { 'READY' | Set-Content -LiteralPath $ReadyPath -Encoding utf8 }
 try {
     $until = [DateTime]::UtcNow.AddSeconds($DurationSeconds)
     while ([DateTime]::UtcNow -lt $until) {
         [CodexWindowObserver]::Pump()
         $lines = [CodexWindowObserver]::Drain()
         if ($lines.Length -gt 0) { Add-Content -LiteralPath $OutputPath -Value $lines -Encoding utf8 }
+        if ($StopPath -and (Test-Path -LiteralPath $StopPath)) { $stopMarkerObserved = $true; break }
         Start-Sleep -Milliseconds 10
     }
 } finally {
     [CodexWindowObserver]::Stop()
     $lines = [CodexWindowObserver]::Drain()
     if ($lines.Length -gt 0) { Add-Content -LiteralPath $OutputPath -Value $lines -Encoding utf8 }
+    if ($StopPath) {
+        @{ stopMarkerObserved=$stopMarkerObserved; finishedUtc=[DateTime]::UtcNow.ToString('o') } |
+            ConvertTo-Json | Set-Content -LiteralPath ($StopPath + '.done.json') -Encoding utf8
+    }
 }

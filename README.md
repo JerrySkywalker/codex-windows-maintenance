@@ -20,6 +20,14 @@ as rollback until side-by-side promotion completes.
 The checked-in `manifest.json` remains the current stable release mapping until
 that train reaches its explicit mapping-promotion gate.
 
+Unreleased 0.158 candidates use `scripts/build-candidate.ps1` and
+`scripts/qualify-candidate.ps1` with an explicit caller-owned candidate mapping.
+The candidate gate retains the no-daemon smoke and adds isolated managed-daemon
+presentation, nested Job lifetime policy, observer positive control and deterministic
+GPT-6 Sol catalog/runtime checks. See
+[candidate qualification](harness/windows-presentation/CANDIDATE-QUALIFICATION.md).
+No candidate entrypoint installs or switches the active Codex.
+
 The checked-in `manifest.json` binds the upstream 0.156.0 commit to the public
 downstream release tag and its qualified source tree. Reproduction starts with a fresh clone of
 the downstream source, PowerShell 7, Python 3, Rust, Git, and `just`.

@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory)][string]$SourcePath,
     [Parameter(Mandatory)][string]$PackageDir,
     [string]$Python,
+    [string]$CandidateMapping,
     [string]$OutputDir = (Join-Path $env:TEMP ([IO.Path]::GetRandomFileName()))
 )
 
@@ -18,13 +19,25 @@ if ($LASTEXITCODE -ne 0) { throw "Python unavailable: $Python" }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $harness = Join-Path $repoRoot 'harness\windows-presentation'
 $manifest = Get-Content -LiteralPath (Join-Path $repoRoot 'manifest.json') -Raw | ConvertFrom-Json
+if ($CandidateMapping) {
+    $candidateJson = & $Python -B (Join-Path $harness 'candidate_mapping.py') $CandidateMapping --mode qualify
+    if ($LASTEXITCODE -ne 0) { throw 'Candidate admission failed' }
+    $manifest = $candidateJson | ConvertFrom-Json
+    if ([IO.Path]::GetFullPath($SourcePath) -ne [IO.Path]::GetFullPath($manifest.sourcePath) -or
+        [IO.Path]::GetFullPath($PackageDir) -ne [IO.Path]::GetFullPath($manifest.packageDir) -or
+        [IO.Path]::GetFullPath($OutputDir) -ne (Join-Path ([IO.Path]::GetFullPath($manifest.outputDir)) 'no-daemon')) {
+        throw 'Candidate smoke paths must match its mapping'
+    }
+}
 $source = (Resolve-Path -LiteralPath $SourcePath).Path
 $package = (Resolve-Path -LiteralPath $PackageDir).Path
 $runRoot = [IO.Path]::GetFullPath($OutputDir)
 $head = (& git -C $source rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $head -ne $manifest.downstreamCommit) { throw 'Source commit mismatch' }
-$tag = (& git -C $source rev-parse "$($manifest.downstreamTag)^{commit}").Trim()
-if ($LASTEXITCODE -ne 0 -or $tag -ne $head) { throw 'Source tag mismatch' }
+if (-not $CandidateMapping) {
+    $tag = (& git -C $source rev-parse "$($manifest.downstreamTag)^{commit}").Trim()
+    if ($LASTEXITCODE -ne 0 -or $tag -ne $head) { throw 'Source tag mismatch' }
+}
 $tree = (& git -C $source show -s --format=%T HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $tree -ne $manifest.downstreamTree) { throw 'Source tree mismatch' }
 if (Test-Path -LiteralPath $runRoot) { throw "Output directory already exists: $runRoot" }
@@ -105,6 +118,9 @@ function Test-CodeModeHandshake {
 }
 
 $config = @"
+cli_auth_credentials_store = "file"
+mcp_oauth_credentials_store = "file"
+
 [features]
 hooks = true
 
@@ -128,6 +144,8 @@ $shellMarker = Join-Path $runRoot 'shell-marker.txt'
 $eventFile = Join-Path $runRoot 'windows.tsv'
 $server = $null
 $observer = $null
+$observerStop = Join-Path $runRoot 'observer.stop'
+$observerReady = Join-Path $runRoot 'observer.ready'
 $oldHome = $env:CODEX_HOME
 $oldKey = $env:OPENAI_API_KEY
 $oldPath = $env:PATH
@@ -145,8 +163,14 @@ try {
     $port = (Get-Content -LiteralPath $portFile -Raw).Trim()
     $observer = Start-HiddenProcess (Get-Process -Id $PID).Path @(
         '-NoProfile', '-File', (Join-Path $harness 'observe-windows.ps1'),
-        '-OutputPath', $eventFile, '-DurationSeconds', '30'
+        '-OutputPath', $eventFile, '-DurationSeconds', '180',
+        '-ReadyPath', $observerReady, '-StopPath', $observerStop
     )
+    $observerDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while (-not (Test-Path -LiteralPath $observerReady)) {
+        if ($observer.HasExited -or [DateTime]::UtcNow -ge $observerDeadline) { throw 'Window observer did not become ready' }
+        Start-Sleep -Milliseconds 20
+    }
     $startedAt = [DateTimeOffset]::UtcNow
     Start-Sleep -Seconds 1
     Test-CodeModeHandshake
@@ -162,7 +186,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Codex smoke failed: $LASTEXITCODE" }
     if (-not (Test-Path -LiteralPath $shellMarker)) { throw 'Shell smoke marker missing' }
     if (-not $server.WaitForExit(10000)) { throw 'Mock Responses server did not finish' }
-    if (-not $observer.WaitForExit(35000) -or $observer.ExitCode -ne 0) { throw 'Window observer failed' }
+    if ($observer.HasExited) { throw 'Window observer ended before no-daemon workload completed' }
+    'WORKLOAD_COMPLETE' | Set-Content -LiteralPath $observerStop -Encoding ascii
+    if (-not $observer.WaitForExit(15000) -or $observer.ExitCode -ne 0) { throw 'Window observer failed' }
+    $observation = Get-Content -Raw -LiteralPath ($observerStop + '.done.json') | ConvertFrom-Json
+    if (-not $observation.stopMarkerObserved) { throw 'Window observer interval incomplete' }
     $requests = @(Get-Content -LiteralPath $requestLog | ForEach-Object { $_ | ConvertFrom-Json })
     if ($requests.Count -ne 4) { throw "Expected four model requests; got $($requests.Count)" }
     $responses = $requests | ConvertTo-Json -Depth 100 -Compress

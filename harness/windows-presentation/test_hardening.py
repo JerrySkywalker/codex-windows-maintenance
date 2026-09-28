@@ -217,6 +217,17 @@ class ProtocolTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "Windows native APIs")
 class WindowsTests(unittest.TestCase):
+    def test_account_and_cloud_environment_not_inherited(self):
+        import qualify_candidate as gate
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {
+                "OPENAI_API_KEY": "SYNTHETIC_DO_NOT_COPY", "AWS_SECRET_ACCESS_KEY": "SYNTHETIC_DO_NOT_COPY",
+                "CODEX_HOME": "SYNTHETIC_DO_NOT_COPY"}):
+            environment = gate.isolated_environment(Path(temporary))
+            self.assertEqual(environment["OPENAI_API_KEY"], "local-smoke-only")
+            self.assertNotIn("AWS_SECRET_ACCESS_KEY", environment)
+            self.assertNotIn("CODEX_HOME", environment)
+            self.assertTrue(Path(environment["USERPROFILE"]).is_relative_to(Path(temporary)))
+
     def test_structured_cli_stdout_is_separate_from_diagnostics(self):
         import sys
         import qualify_candidate as gate

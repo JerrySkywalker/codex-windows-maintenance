@@ -118,6 +118,9 @@ function Test-CodeModeHandshake {
 }
 
 $config = @"
+cli_auth_credentials_store = "file"
+mcp_oauth_credentials_store = "file"
+
 [features]
 hooks = true
 

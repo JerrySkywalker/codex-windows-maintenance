@@ -42,6 +42,8 @@ select an installed Codex, bootstrap/download a managed package, or enable remot
 control. The managed daemon uses a verified copy of the candidate package under
 the new isolated home. Dependency paths are explicit, account/credential variables
 are not inherited, and the sole model endpoint is a loopback mock.
+CLI and MCP credential storage are explicitly file-only in the disposable home;
+the harness does not consult the OS credential store.
 
 The existing no-daemon smoke runs first, including Code Mode handshake. The new
 gate then compiles/runs the isolated three-case nested Job surrogate and exercises

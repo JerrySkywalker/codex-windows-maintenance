@@ -247,6 +247,7 @@ def managed_run(mapping_path, pwsh):
         port = int((root / "port.txt").read_text())
         # JSON strings are valid TOML basic strings for the paths used here.
         config = '\n'.join([
+            'cli_auth_credentials_store = "file"', 'mcp_oauth_credentials_store = "file"',
             'model = "gpt-6-sol"', 'model_provider = "mock"', 'approval_policy = "never"',
             'sandbox_mode = "danger-full-access"', '[features]', 'hooks = true', 'code_mode = true', 'unified_exec = true',
             '[model_providers.mock]', 'name = "mock"', f'base_url = "http://127.0.0.1:{port}/v1"',

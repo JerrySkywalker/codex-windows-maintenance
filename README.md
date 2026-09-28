@@ -6,6 +6,20 @@ scripts, local test fixtures, and a source mapping. It contains no Codex source
 or packaged executables. This is not an official OpenAI product and does not
 imply upstream endorsement.
 
+## Active upstream port train
+
+The current controlled upgrade is
+[`WBP-UPSTREAM-0158-PORT-TRAIN-001`](goals/WBP-UPSTREAM-0158-PORT-TRAIN-001.md),
+which advances the existing two-repository workflow from the qualified
+`v0.156.0-wbp-r1` baseline to exact upstream `rust-v0.158.0`. The train keeps
+Goal/control documents in this maintenance repository, requires a port audit
+before source mutation, adds managed-daemon presentation qualification for the
+Windows defect class tracked by `openai/codex#44768`, and preserves the old WBP
+as rollback until side-by-side promotion completes.
+
+The checked-in `manifest.json` remains the current stable release mapping until
+that train reaches its explicit mapping-promotion gate.
+
 The checked-in `manifest.json` binds the upstream 0.156.0 commit to the public
 downstream release tag and its qualified source tree. Reproduction starts with a fresh clone of
 the downstream source, PowerShell 7, Python 3, Rust, Git, and `just`.

@@ -22,6 +22,7 @@ jobs:
             'harness/windows-presentation/candidate_mapping.py', 'harness/windows-presentation/daemon_rpc.py',
             'harness/windows-presentation/qualify_candidate.py', 'harness/windows-presentation/windows_native.py',
             'harness/windows-presentation/LifetimeFixture.cs', 'harness/windows-presentation/bundled_rg_probe.py',
+            'harness/windows-presentation/test_hardening.py',
             'harness/windows-presentation/validate_windows_fixtures.py', 'harness/windows-presentation/CANDIDATE-QUALIFICATION.md')
           foreach ($path in $required) { if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing $path" } }
           foreach ($path in (Get-ChildItem scripts,harness -Recurse -Filter '*.ps1').FullName) {

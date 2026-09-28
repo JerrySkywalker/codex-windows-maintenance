@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "goalId": "WBP-UPSTREAM-0158-PORT-TRAIN-001",
+  "maintenanceBaseline": {
+    "repository": "JerrySkywalker/codex-windows-maintenance",
+    "commit": "82691e666bb9e421282233a9c7750d2b9e36ce4a"
+  },
+  "sourceBaseline": {
+    "repository": "JerrySkywalker/codex-windows-patched",
+    "publicMain": "132ba3d1aee04f51af4df4cbe75beed8cf7d1f08",
+    "qualifiedTag": "v0.156.0-wbp-r1",
+    "qualifiedCommit": "44093ea5c1d33f008f6035ec1a519e1247f04295",
+    "qualifiedTree": "2a9dacb7e34dd719730946eaefcf755c47aae56e"
+  },
+  "targetUpstream": {
+    "repository": "openai/codex",
+    "version": "0.158.0",
+    "tag": "rust-v0.158.0",
+    "commit": "064c6b8c737f5b41d171fdda80bd9ef10ad06eb3"
+  },
+  "children": [
+    "WBP-UPSTREAM-0158-G00-BASELINE-FREEZE-001",
+    "WBP-UPSTREAM-0158-G01-PORT-AUDIT-001",
+    "WBP-UPSTREAM-0158-G02-MAINTENANCE-HARDENING-001",
+    "WBP-UPSTREAM-0158-G03-SOURCE-PORT-001",
+    "WBP-UPSTREAM-0158-G04-QUALIFICATION-001",
+    "WBP-UPSTREAM-0158-G05-SOURCE-RELEASE-001",
+    "WBP-UPSTREAM-0158-G06-MAPPING-PROMOTION-001",
+    "WBP-UPSTREAM-0158-G07-SIDE-BY-SIDE-PROMOTION-001"
+  ],
+  "externalContext": {
+    "codexIssue": "openai/codex#44768",
+    "fleetSpliceMutationAuthorized": false
+  }
+}

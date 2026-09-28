@@ -50,7 +50,7 @@ class MappingTests(unittest.TestCase):
         original = mapping.sha(mapping.ROOT / "manifest.json")
         value, paths = self.load()
         self.assertEqual(value["kind"], "UNRELEASED_CANDIDATE")
-        self.assertEqual(paths["outputDir"], self.root / "evidence")
+        self.assertEqual(paths["outputDir"], (self.root / "evidence").resolve())
         self.assertEqual(mapping.sha(mapping.ROOT / "manifest.json"), original)
         self.assertFalse(paths["outputDir"].exists())
 

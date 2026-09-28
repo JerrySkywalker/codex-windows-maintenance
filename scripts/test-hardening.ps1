@@ -19,7 +19,10 @@ try {
     & $Python -B -c "import ast, pathlib; [ast.parse(p.read_text(encoding='utf-8-sig')) for p in pathlib.Path('harness').rglob('*.py')]"
     if ($LASTEXITCODE -ne 0) { throw 'Python syntax validation failed' }
     & $Python -B -c "import unittest, sys; suite = unittest.defaultTestLoader.discover('harness/windows-presentation', pattern='test_hardening.py'); assert suite.countTestCases() > 0, 'Focused suite is empty'; sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())" *> (Join-Path $OutputDir 'unit-tests.log')
-    if ($LASTEXITCODE -ne 0) { throw 'Focused hardening tests failed' }
+    if ($LASTEXITCODE -ne 0) {
+        Get-Content -LiteralPath (Join-Path $OutputDir 'unit-tests.log') | Write-Output
+        throw 'Focused hardening tests failed'
+    }
 } finally { Pop-Location }
 @{status='FOCUSED_VALIDATION_PASS'; scope='Syntax and deterministic harness tests; candidate package/runtime qualification not claimed'} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDir 'validation.json') -Encoding utf8

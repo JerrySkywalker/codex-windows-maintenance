@@ -115,6 +115,11 @@ def isolated_env(home, extra):
 def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault="normal"):
     synthetic = synthetic_args is not None
     validate_binding(binding, synthetic=synthetic)
+    faults = {"normal", "registration-failure", "crash-before-debug-check", "crash-before-registration",
+              "crash-during-registration", "crash-after-registration", "timeout"}
+    if not synthetic:
+        faults.update({"guard-reject", "query-failure"})
+    require(fault in faults, "Unknown fixture fault selection")
     protocol_only = synthetic and binding["kind"] == "HARNESS_PROTOCOL_ONLY"
     binary, output = Path(binary).resolve(), Path(output).resolve()
     require(binary.is_file() and sha(binary) == binding["binarySha256"], "Worker binary changed")
@@ -176,8 +181,8 @@ def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault=
         while time.monotonic() < deadline:
             # Harness-only observation proves the kernel crash backstop without
             # registering or terminating this child. Never used for source PASS.
-            if synthetic and fault in ("crash-before-debug-check", "crash-before-registration",
-                                       "crash-during-registration") and fault_observer_handle is None:
+            if fault in ("crash-before-debug-check", "crash-before-registration",
+                         "crash-during-registration") and fault_observer_handle is None:
                 fault_file = output / "fault-child.json"
                 if fault_file.exists():
                     observed = read_json(fault_file)
@@ -229,6 +234,7 @@ def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault=
         worker_exit = w.DWORD()
         checked(exit_of(info.process, c.byref(worker_exit)), "GetExitCodeProcess")
         require(worker_exit.value == 0, "Source fixture worker failed")
+        require(fault == "normal", "Controlled fault cannot produce a completed fixture receipt")
         if not synthetic:
             log = (output / "worker-libtest.log").read_text(encoding="utf-8", errors="replace")
             require(binding["testName"] in log and

@@ -49,7 +49,8 @@ jobs:
           New-Item -ItemType Directory -Path $probeDir | Out-Null
           $probeExe = Join-Path $probeDir 'Synthetic.exe'
           $compiler = Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-          & $compiler /nologo /target:exe /platform:x64 /reference:System.Web.Extensions.dll "/out:$probeExe" harness/windows-presentation/SourceFixtureSynthetic.cs
+          $probeSource = (Resolve-Path -LiteralPath 'harness/windows-presentation/SourceFixtureSynthetic.cs').Path
+          & $compiler /nologo /target:exe /platform:x64 /reference:System.Web.Extensions.dll "/out:$probeExe" $probeSource
           if ($LASTEXITCODE -ne 0) { throw 'Host probe compile failed' }
           python -B harness/windows-presentation/probe_fixture_host.py --binary $probeExe --output (Join-Path $probeDir 'host.json')
           if ($LASTEXITCODE -ne 0) { throw 'Host probe cleanup failed' }

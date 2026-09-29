@@ -34,6 +34,26 @@ class SourceFixtureHostTests(unittest.TestCase):
                 "sourceCommit": "1" * 40, "sourceTree": "2" * 40,
                 "testName": TEST_NAME, "binarySha256": sha(self.binary)}
 
+    def test_exit_race_requires_same_owned_handle_exit(self):
+        def exited(*args):
+            source_fixture_host.c.set_last_error(5)
+            return 0
+        with patch.object(source_fixture_host, "wait", side_effect=[258, 0, 0]) as waiting, \
+             patch.object(source_fixture_host, "terminate", side_effect=exited):
+            source_fixture_host.stop_owned(123, "worker")
+        self.assertEqual(waiting.call_args_list[1].args, (123, 5000))
+
+    def test_cleanup_denied_or_unknown_exit_remains_failure(self):
+        for error, final_wait in ((5, 258), (5, 0xffffffff), (6, 0)):
+            with self.subTest(error=error, final_wait=final_wait):
+                def denied(*args):
+                    source_fixture_host.c.set_last_error(error)
+                    return 0
+                with patch.object(source_fixture_host, "wait", side_effect=[258, final_wait]), \
+                     patch.object(source_fixture_host, "terminate", side_effect=denied):
+                    with self.assertRaises(OSError):
+                        source_fixture_host.stop_owned(123, "worker")
+
     def test_original_child_and_registered_handles_close(self):
         output = Path(self.root.name) / "normal"
         result = run_host(self.binary, self.binding(), output, synthetic_args=[])

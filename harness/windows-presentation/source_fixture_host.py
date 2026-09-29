@@ -66,6 +66,19 @@ def checked(ok, operation):
         raise OSError(c.get_last_error(), operation)
 
 
+def stop_owned(handle, name):
+    result = wait(handle, 0)
+    require(result in (0, 258), f"Unknown {name} cleanup wait")
+    if result == 258 and not terminate(handle, 79):
+        error = c.get_last_error()
+        # TerminateProcess returns ERROR_ACCESS_DENIED if the process exits
+        # between the initial wait and termination. Prove exit on this same
+        # original/verified handle; no PID reopen or unverified success.
+        if error != 5 or wait(handle, 5000) != 0:
+            raise OSError(error, f"Terminate original/registered {name}")
+    require(wait(handle, 5000) == 0, f"{name} cleanup incomplete")
+
+
 def identity(handle, *, protocol_only=False):
     fields = [w.FILETIME() for _ in range(4)]
     checked(process_times(handle, *[c.byref(t) for t in fields]), "GetProcessTimes")
@@ -264,11 +277,7 @@ def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault=
             if not handle:
                 continue
             try:
-                result = wait(handle, 0)
-                require(result in (0, 258), f"Unknown {name} cleanup wait")
-                if result == 258:
-                    checked(terminate(handle, 79), f"Terminate original/registered {name}")
-                require(wait(handle, 5000) == 0, f"{name} cleanup incomplete")
+                stop_owned(handle, name)
             except BaseException as error:
                 cleanup_errors.append(str(error))
             finally:

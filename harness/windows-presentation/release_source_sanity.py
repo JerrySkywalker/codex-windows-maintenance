@@ -7,7 +7,8 @@ import subprocess
 import tomllib
 
 from candidate_mapping import git, read_json, require, sha
-from rolling_control import exact
+from rolling_control import CONTROL, exact
+from validation_job import verify_receipt
 
 
 def normalize(lock, local_names, version):
@@ -37,12 +38,14 @@ def normalize(lock, local_names, version):
 
 def derive(source, upstream):
     exact(upstream)
+    control = read_json(CONTROL)
+    require(upstream == control["targetUpstream"]["commit"], "Unadmitted release upstream")
     def obj(path):
         return subprocess.check_output(["git", "-C", str(source), "show", f"{upstream}:{path}"])
     manifest = obj("codex-rs/Cargo.toml")
     workspace = tomllib.loads(manifest.decode())["workspace"]
     version = workspace["package"]["version"]
-    require(version != "0.0.0", "Release version required")
+    require(version == control["targetUpstream"]["version"], "Release version mismatch")
     paths = subprocess.check_output(["git", "-C", str(source), "ls-tree", "-r", "--name-only",
                                      upstream, "codex-rs"]).decode().splitlines()
     names = {}
@@ -73,18 +76,18 @@ def verify_gate(source, upstream, jobs):
     git(source, "merge-base", "--is-ancestor", upstream, commit)
     results = []
     for directory in jobs:
-        request, receipt = (read_json(directory / name) for name in ("request.json", "receipt.json"))
-        require(receipt.get("status") == "PASS" and receipt.get("exitCode") == 0 and
-                receipt.get("requestSha256") == sha(directory / "request.json") and
-                receipt.get("logSha256") == sha(directory / "command.log") and
-                request["source"]["commit"] == commit and request["source"]["tree"] == tree,
+        request, _ = verify_receipt(directory, "PASS")
+        require(request["source"]["commit"] == commit and request["source"]["tree"] == tree,
                 "Locked command receipt mismatch")
         require(Path(request["command"][0]).name.lower() == "cargo.exe" and
                 Path(request["cwd"]).resolve() == (source / "codex-rs").resolve(), "Direct Cargo command required")
         results.append((request["command"], directory))
-    metadata_jobs = [directory for command, directory in results if "metadata" in command and
-                     "--locked" in command and "--no-deps" not in command]
-    require(len(metadata_jobs) == 1 and any("check" in command and "--locked" in command for command, _ in results),
+    metadata_jobs = [directory for command, directory in results if command[1:] ==
+                     ["metadata", "--locked", "--format-version", "1"] and
+                     read_json(directory / "request.json").get("machineJson") is True]
+    check_jobs = [directory for command, directory in results if command[1:] ==
+                  ["check", "--locked", "-p", "codex-utils-pty", "--lib"]]
+    require(len(metadata_jobs) == 1 and len(check_jobs) == 1,
             "Full locked metadata and locked check required")
     metadata = read_json(metadata_jobs[0] / "command.log")
     packages = {package["id"]: package for package in metadata["packages"]}

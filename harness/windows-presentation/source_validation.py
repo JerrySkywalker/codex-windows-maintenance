@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 
 from candidate_mapping import contained, git, read_json, require, sha
@@ -77,12 +78,16 @@ def main():
     verify_source()
     if args.full_suite:
         require(args.durable_job is not None, "Full qualification requires a durable external job")
-        from validation_job import validate_request
-        job = read_json(args.durable_job / "request.json")
-        validate_request(job, args.durable_job.resolve())
+        from validation_job import verify_receipt
+        # The worker publishes the spawned child's exact identity immediately.
+        for _ in range(100):
+            receipt = read_json(args.durable_job / "receipt.json")
+            if receipt.get("childPid") == os.getpid():
+                break
+            time.sleep(0.05)
+        job, _ = verify_receipt(args.durable_job, "RUNNING", executing=True)
         require(job["lane"] == "STABLE" and job["source"]["commit"] == args.commit and
-                job["source"]["tree"] == args.tree and
-                read_json(args.durable_job / "receipt.json").get("status") == "RUNNING",
+                job["source"]["tree"] == args.tree,
                 "Running bound Stable job required")
     train = read_json(maintenance / "goals/WBP-ROLLING-0159-FAST-FORWARD-001.manifest.json")
     git(source, "merge-base", "--is-ancestor", train["targetUpstream"]["commit"], args.commit)

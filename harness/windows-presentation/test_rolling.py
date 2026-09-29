@@ -11,7 +11,9 @@ from unittest.mock import patch
 from candidate_mapping import read_json
 import rolling_control as rolling
 from release_source_sanity import normalize
-from validation_job import validate_request, run
+from validation_job import validate_request, run, verify_receipt
+from candidate_mapping import sha
+from source_fixture_host import pid_of
 
 
 class RollingTests(unittest.TestCase):
@@ -51,6 +53,11 @@ class RollingTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 rolling.transition(self.state, "begin-stable", invalid)
 
+    def test_stable_freezes_maintenance_identity(self):
+        frozen = rolling.transition(self.state, "begin-stable", self.edge)["stable"]
+        self.assertEqual((frozen["maintenanceCommit"], frozen["maintenanceTree"]),
+                         (self.edge["maintenanceCommit"], self.edge["maintenanceTree"]))
+
     def test_cli_releases_windows_lock_after_success_and_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state.json"
@@ -87,6 +94,41 @@ class ReleaseLockTests(unittest.TestCase):
 
 
 class DurableJobTests(unittest.TestCase):
+    def test_completed_receipt_rejects_tampered_identity_hash_and_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binding = dict(path=str(root / "source"), commit="a" * 40, tree="b" * 40)
+            request = dict(schemaVersion=1, kind="DURABLE_VALIDATION_JOB", lane="FAST_EDGE",
+                           env={}, source=binding, maintenance={**binding, "path": str(root / "maintenance")},
+                           cwd=str(root), command=[sys.executable, "-I", "-S", "-c", 'print("ok")'])
+            (root / "request.json").write_text(json.dumps(request))
+            def clean_identity(handle):
+                return dict(pid=pid_of(handle), created=1, queryReturn=1, lastError=0, inJob=False)
+            with patch("validation_job.verify"), patch("validation_job.identity", side_effect=clean_identity):
+                run(root)
+            receipt = read_json(root / "receipt.json")
+            launch = dict(pid=receipt["pid"], requestSha256=sha(root / "request.json"),
+                          workerIdentity=receipt["workerIdentity"], workerSha256=sha(sys.modules["validation_job"].__file__),
+                          workerExecutable=sys.executable, workerExecutableSha256=sha(sys.executable))
+            (root / "launch.json").write_text(json.dumps(launch))
+            with patch("validation_job.validate_request"):
+                self.assertEqual(verify_receipt(root, "PASS")[1]["status"], "PASS")
+                for field, invalid in (("requestSha256", "0" * 64), ("workerSha256", "0" * 64),
+                                       ("childIdentity", {**receipt["childIdentity"], "created": 0}),
+                                       ("logSha256", "0" * 64),
+                                       ("maintenance", {**binding, "path": "C:/other"})):
+                    altered = {**receipt, field: invalid}
+                    (root / "receipt.json").write_text(json.dumps(altered))
+                    with self.subTest(field=field), self.assertRaises(ValueError):
+                        verify_receipt(root, "PASS")
+                stale = {**receipt, "status": "RUNNING", "pid": 99999999,
+                         "workerIdentity": {**receipt["workerIdentity"], "pid": 99999999}}
+                launch["pid"] = 99999999
+                launch["workerIdentity"] = stale["workerIdentity"]
+                (root / "receipt.json").write_text(json.dumps(stale))
+                (root / "launch.json").write_text(json.dumps(launch))
+                with self.assertRaises(ValueError):
+                    verify_receipt(root, "RUNNING")
     def test_real_command_progress_receipt_finishes_and_changed_source_fails(self):
         for changed in (False, True):
             with self.subTest(changed=changed), tempfile.TemporaryDirectory() as directory:

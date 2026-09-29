@@ -47,7 +47,7 @@ qualification use a separate, caller-owned JSON file with exactly these fields:
   "kind": "UNRELEASED_CANDIDATE",
   "goalId": "WBP-ROLLING-0159-FAST-FORWARD-001",
   "upstreamVersion": "0.159.0",
-  "upstreamCommit": "064c6b8c737f5b41d171fdda80bd9ef10ad06eb3",
+  "upstreamCommit": "687a119f0fcaace47e1f1abcc77cec6c813fd6da",
   "downstreamCommit": "EXACT_40_CHARACTER_CANDIDATE_COMMIT",
   "downstreamTree": "EXACT_40_CHARACTER_CANDIDATE_TREE",
   "target": "x86_64-pc-windows-msvc",

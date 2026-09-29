@@ -10,7 +10,7 @@ import traceback
 
 from candidate_mapping import contained, git, read_json, require, sha
 from rolling_control import exact
-from source_fixture_host import atomic_json, isolated_env, identity, current
+from source_fixture_host import atomic_json, isolated_env, identity, current, open_process, close, wait, image
 
 ENV_KEYS = {"PATH", "CARGO_HOME", "RUSTUP_HOME", "RUSTUP_TOOLCHAIN", "CARGO_TARGET_DIR",
             "CARGO_HTTP_TIMEOUT", "CARGO_NET_RETRY", "CARGO_NET_GIT_FETCH_WITH_CLI",
@@ -56,8 +56,56 @@ def validate_request(request, output):
         freeze = state.get("stable") or {}
         require(freeze.get("status") == "STABLE_QUALIFICATION_STARTED" and
                 (freeze.get("sourceCommit"), freeze.get("sourceTree")) ==
-                (request["source"]["commit"], request["source"]["tree"]), "Stable freeze missing/mismatched")
+                (request["source"]["commit"], request["source"]["tree"]) and
+                (freeze.get("maintenanceCommit"), freeze.get("maintenanceTree")) ==
+                (request["maintenance"]["commit"], request["maintenance"]["tree"]),
+                "Stable freeze missing/mismatched")
         require(sha(request["stableState"]) == request["stableStateSha256"], "Stable state changed")
+
+
+def verify_receipt(output, expected_status, *, executing=False):
+    """Accept only one launched, bound job; a stale RUNNING file is insufficient."""
+    output = Path(output).resolve()
+    request_path = output / "request.json"
+    request, launch, receipt = (read_json(output / name) for name in
+                                ("request.json", "launch.json", "receipt.json"))
+    validate_request(request, output)
+    require(receipt.get("schemaVersion") == 1 and receipt.get("kind") == "DURABLE_VALIDATION_RECEIPT" and
+            receipt.get("status") == expected_status and receipt.get("lane") == request["lane"] and
+            receipt.get("source") == request["source"] and receipt.get("maintenance") == request["maintenance"],
+            "Durable receipt status or source binding mismatch")
+    require(receipt.get("requestSha256") == launch.get("requestSha256") == sha(request_path) and
+            receipt.get("workerSha256") == launch.get("workerSha256") == sha(__file__) and
+            receipt.get("executableSha256") == sha(request["command"][0]), "Durable command/code hash mismatch")
+    worker = receipt.get("workerIdentity")
+    child = receipt.get("childIdentity")
+    require(isinstance(worker, dict) and isinstance(child, dict) and
+            worker == launch.get("workerIdentity") and
+            worker.get("pid") == receipt.get("pid") == launch.get("pid") and
+            not worker.get("inJob") and worker.get("created", 0) > 0 and
+            child.get("pid") == receipt.get("childPid") and child.get("created", 0) > 0 and
+            child.get("queryReturn") == 1 and not child.get("inJob"), "Durable process identity mismatch")
+    require(Path(launch["workerExecutable"]).is_absolute() and
+            launch.get("workerExecutableSha256") == sha(launch["workerExecutable"]),
+            "Durable worker executable changed")
+    if expected_status == "RUNNING":
+        handle = open_process(0x101000, False, worker["pid"])
+        require(handle, "Durable worker exited")
+        try:
+            require(identity(handle) == worker and wait(handle, 0) == 258 and
+                    image(handle) == Path(launch["workerExecutable"]).resolve(),
+                    "Stale or replaced durable worker")
+        finally:
+            close(handle)
+        if executing:
+            require(receipt["childPid"] == os.getpid() and identity(current()) == child and
+                    request["command"] == sys.orig_argv, "Unbound qualification command")
+    else:
+        require(expected_status == "PASS" and receipt.get("exitCode") == 0 and
+                receipt.get("logSha256") == sha(output / "command.log") and
+                receipt.get("stderrSha256") == sha(output / "command.stderr.log") and
+                receipt.get("finishedUtc"), "Incomplete final validation receipt")
+    return request, receipt
 
 
 def run(output):
@@ -80,7 +128,7 @@ def run(output):
                                      stderr=errors if request.get("machineJson", False) else subprocess.STDOUT,
                                      creationflags=subprocess.CREATE_NO_WINDOW)
             receipt["childPid"] = child.pid
-            receipt["childIdentity"] = identity(int(child._handle), protocol_only=True)
+            receipt["childIdentity"] = identity(int(child._handle))
             update_receipt(output / "receipt.json", receipt)
             code = child.wait()
         receipt.update(exitCode=code, logSha256=sha(output / "command.log"), stderrSha256=sha(output / "command.stderr.log"))
@@ -124,7 +172,8 @@ def main():
                         "requestSha256": sha(output / "request.json")})
             raise
         atomic_json(output / "launch.json", {"pid": process.pid, "requestSha256": sha(output / "request.json"),
-                    "workerIdentity": identity(int(process._handle)),
+                    "workerIdentity": identity(int(process._handle)), "workerExecutable": sys.executable,
+                    "workerExecutableSha256": sha(sys.executable),
                     "workerSha256": sha(__file__), "utc": datetime.now(timezone.utc).isoformat()})
         print(f"DURABLE_JOB_STARTED pid={process.pid} receipt={output / 'receipt.json'}")
 

@@ -48,7 +48,9 @@ def transition(state, action, evidence):
         result["edge"] = evidence
         result["stable"] = {"status": "STABLE_QUALIFICATION_STARTED",
                             "targetUpstream": deepcopy(state["targetUpstream"]),
-                            "sourceCommit": evidence["sourceCommit"], "sourceTree": evidence["sourceTree"]}
+                            "sourceCommit": evidence["sourceCommit"], "sourceTree": evidence["sourceTree"],
+                            "maintenanceCommit": evidence["maintenanceCommit"],
+                            "maintenanceTree": evidence["maintenanceTree"]}
     else:
         raise ValueError("Unknown transition")
     return result

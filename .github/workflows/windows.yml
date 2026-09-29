@@ -34,6 +34,9 @@ jobs:
             'harness/windows-presentation/test_source_fixture_contract.py', 'harness/windows-presentation/test_source_fixture_host.py',
             'harness/windows-presentation/test_source_fixture_accounting.py', 'harness/windows-presentation/probe_fixture_host.py')
           foreach ($path in $required) { if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing $path" } }
+          foreach ($path in @('rolling_control.py', 'boundary_delta.py', 'release_source_sanity.py', 'validation_job.py', 'test_rolling.py')) {
+            if (-not (Test-Path -LiteralPath "harness/windows-presentation/$path" -PathType Leaf)) { throw "Missing $path" }
+          }
           foreach ($path in (Get-ChildItem scripts,harness -Recurse -Filter '*.ps1').FullName) {
             $tokens = $null; $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)

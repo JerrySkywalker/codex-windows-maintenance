@@ -6,21 +6,20 @@ scripts, local test fixtures, and a source mapping. It contains no Codex source
 or packaged executables. This is not an official OpenAI product and does not
 imply upstream endorsement.
 
-## Active upstream port train
+## Rolling Edge and Stable promotion
 
-The current controlled upgrade is
-[`WBP-UPSTREAM-0158-PORT-TRAIN-001`](goals/WBP-UPSTREAM-0158-PORT-TRAIN-001.md),
-which advances the existing two-repository workflow from the qualified
-`v0.156.0-wbp-r1` baseline to exact upstream `rust-v0.158.0`. The train keeps
-Goal/control documents in this maintenance repository, requires a port audit
-before source mutation, adds managed-daemon presentation qualification for the
-Windows defect class tracked by `openai/codex#44768`, and preserves the old WBP
-as rollback until side-by-side promotion completes.
+The active goal is
+[`WBP-ROLLING-0159-FAST-FORWARD-001`](goals/WBP-ROLLING-0159-FAST-FORWARD-001.md).
+The 0.158 candidate is frozen as a semantic donor. Rolling Edge advances to exact
+upstream 0.159 using a boundary delta audit and FAST validation. Stable qualification
+freezes its target and runs once as durable external validation, then follows the
+source release, manifest and installed qualification gates before the Owner canary
+and routing promotion. New upstream releases do not retarget a running qualification.
 
 The checked-in `manifest.json` remains the current stable release mapping until
-that train reaches its explicit mapping-promotion gate.
+the Stable lane reaches its explicit mapping-promotion gate.
 
-Unreleased 0.158 candidates use `scripts/build-candidate.ps1` and
+Unreleased Edge candidates use `scripts/build-candidate.ps1` and
 `scripts/qualify-candidate.ps1` with an explicit caller-owned candidate mapping.
 The candidate gate retains the no-daemon smoke and adds isolated managed-daemon
 presentation, nested Job lifetime policy, observer positive control and deterministic

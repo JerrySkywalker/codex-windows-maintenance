@@ -45,8 +45,8 @@ qualification use a separate, caller-owned JSON file with exactly these fields:
 {
   "schemaVersion": 1,
   "kind": "UNRELEASED_CANDIDATE",
-  "goalId": "WBP-UPSTREAM-0158-PORT-TRAIN-001",
-  "upstreamVersion": "0.158.0",
+  "goalId": "WBP-ROLLING-0159-FAST-FORWARD-001",
+  "upstreamVersion": "0.159.0",
   "upstreamCommit": "064c6b8c737f5b41d171fdda80bd9ef10ad06eb3",
   "downstreamCommit": "EXACT_40_CHARACTER_CANDIDATE_COMMIT",
   "downstreamTree": "EXACT_40_CHARACTER_CANDIDATE_TREE",

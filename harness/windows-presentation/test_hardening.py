@@ -22,7 +22,7 @@ class MappingTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.file = self.root / "candidate.json"
-        train = mapping.read_json(mapping.ROOT / "goals/WBP-UPSTREAM-0158-PORT-TRAIN-001.manifest.json")
+        train = mapping.read_json(mapping.ROOT / "goals/WBP-ROLLING-0159-FAST-FORWARD-001.manifest.json")
         self.value = dict(schemaVersion=1, kind="UNRELEASED_CANDIDATE", goalId=train["goalId"],
                           upstreamVersion=train["targetUpstream"]["version"], upstreamCommit=train["targetUpstream"]["commit"],
                           downstreamCommit="a" * 40, downstreamTree="b" * 40, target="x86_64-pc-windows-msvc",
@@ -112,7 +112,7 @@ class MappingTests(unittest.TestCase):
             target = package / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(b"fixture-only")
-        mapping.write_json(package / "codex-package.json", {"version": "0.158.0", "target": self.value["target"], "entrypoint": "bin/codex.exe"})
+        mapping.write_json(package / "codex-package.json", {"version": self.value["upstreamVersion"], "target": self.value["target"], "entrypoint": "bin/codex.exe"})
         mapping.write_json(self.file, self.value)
         with patch.object(mapping, "git", self.git):
             mapping.record_build(self.file)

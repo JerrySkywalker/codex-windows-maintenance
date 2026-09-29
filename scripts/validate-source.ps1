@@ -12,6 +12,7 @@ param(
     [Parameter(Mandatory)][string]$OutputDir,
     [string[]]$DependencyPath = @(),
     [switch]$FullSuite,
+    [string]$DurableJob,
     [string[]]$TestArgs = @('-p', 'codex-utils-pty', '-p', 'codex-app-server-daemon', '--lib')
 )
 $ErrorActionPreference = 'Stop'
@@ -22,6 +23,8 @@ $arguments = @('-B', (Join-Path $repoRoot 'harness/windows-presentation/source_v
     '--target-dir', $TargetDir, '--output', $OutputDir)
 foreach ($path in $DependencyPath) { $arguments += @('--dependency-path', $path) }
 if ($FullSuite) {
+    if (-not $DurableJob) { throw 'Full qualification requires a durable external job receipt directory' }
+    $arguments += @('--durable-job', $DurableJob)
     $arguments += @('--full-suite')
     if (-not $PSBoundParameters.ContainsKey('TestArgs')) { $TestArgs = @() }
 }

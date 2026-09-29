@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "goalId": "WBP-ROLLING-0159-FAST-FORWARD-001",
+  "maintenanceBaseline": "028108479ffe0a4ffcbed4047d10b609a0a11347",
+  "semanticDonor": {
+    "commit": "e5cdced97ee29a81724fb8087f123af8e9aa6b37",
+    "tree": "ef6a14135f4be89d964e8cc2aee71bbfa8ed8a0b",
+    "upstreamCommit": "064c6b8c737f5b41d171fdda80bd9ef10ad06eb3",
+    "releaseEligible": false,
+    "qualificationComplete": false,
+    "boundaryCount": 32,
+    "sourceFileCount": 35
+  },
+  "targetUpstream": {
+    "version": "0.159.0",
+    "tag": "rust-v0.159.0",
+    "commit": "687a119f0fcaace47e1f1abcc77cec6c813fd6da"
+  },
+  "lanes": ["ROLLING_EDGE", "STABLE"],
+  "retargetUntil": "STABLE_QUALIFICATION_STARTED",
+  "sourceContract": "G03S_CLEAN_NATIVE_WORKER_AND_PINNED_NEXTEST",
+  "fleetSpliceAdmission": "AFTER_WBP_CLOSEOUT",
+  "routingPromotion": "AFTER_G07_OWNER_CANARY"
+}

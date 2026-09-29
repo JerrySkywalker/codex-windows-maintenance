@@ -55,6 +55,7 @@ def main():
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--dependency-path", action="append", default=[])
     parser.add_argument("--full-suite", action="store_true")
+    parser.add_argument("--durable-job", type=Path)
     parser.add_argument("test_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     source, output = Path(args.source).resolve(), Path(args.output).resolve()
@@ -74,7 +75,16 @@ def main():
                 git(source, "show", "-s", "--format=%T", "HEAD") == args.tree and
                 not git(source, "status", "--porcelain=v1", "--untracked-files=all"), "Source changed or dirty")
     verify_source()
-    train = read_json(maintenance / "goals/WBP-UPSTREAM-0158-PORT-TRAIN-001.manifest.json")
+    if args.full_suite:
+        require(args.durable_job is not None, "Full qualification requires a durable external job")
+        from validation_job import validate_request
+        job = read_json(args.durable_job / "request.json")
+        validate_request(job, args.durable_job.resolve())
+        require(job["lane"] == "STABLE" and job["source"]["commit"] == args.commit and
+                job["source"]["tree"] == args.tree and
+                read_json(args.durable_job / "receipt.json").get("status") == "RUNNING",
+                "Running bound Stable job required")
+    train = read_json(maintenance / "goals/WBP-ROLLING-0159-FAST-FORWARD-001.manifest.json")
     git(source, "merge-base", "--is-ancestor", train["targetUpstream"]["commit"], args.commit)
     output.mkdir(parents=True)
     test_args = args.test_args[1:] if args.test_args[:1] == ["--"] else args.test_args

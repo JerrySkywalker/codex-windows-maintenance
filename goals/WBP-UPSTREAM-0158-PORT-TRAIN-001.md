@@ -1,5 +1,9 @@
 # WBP upstream 0.158 port Goal Train
 
+Historical train: superseded by [Rolling Edge / Stable](WBP-ROLLING-0159-FAST-FORWARD-001.md).
+The 0.158 candidate is frozen as a semantic donor and must not proceed to release.
+Prior reviewed semantic decisions remain usable; unfinished qualification remains unfinished.
+
 Goal ID: `WBP-UPSTREAM-0158-PORT-TRAIN-001`
 
 Purpose: advance the existing Windows compatibility maintenance workflow from the qualified

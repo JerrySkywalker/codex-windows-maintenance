@@ -82,9 +82,11 @@ def verify_receipt(output, expected_status, *, executing=False):
     require(isinstance(worker, dict) and isinstance(child, dict) and
             worker == launch.get("workerIdentity") and
             worker.get("pid") == receipt.get("pid") == launch.get("pid") and
+            worker.get("queryReturn") == 1 and worker.get("lastError") == 0 and
             not worker.get("inJob") and worker.get("created", 0) > 0 and
             child.get("pid") == receipt.get("childPid") and child.get("created", 0) > 0 and
-            child.get("queryReturn") == 1 and not child.get("inJob"), "Durable process identity mismatch")
+            child.get("queryReturn") == 1 and child.get("lastError") == 0 and
+            not child.get("inJob"), "Durable process identity mismatch")
     require(Path(launch["workerExecutable"]).is_absolute() and
             launch.get("workerExecutableSha256") == sha(launch["workerExecutable"]),
             "Durable worker executable changed")

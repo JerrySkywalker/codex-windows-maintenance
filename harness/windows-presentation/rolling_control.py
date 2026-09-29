@@ -27,6 +27,11 @@ def transition(state, action, evidence):
     result = deepcopy(state)
     require(state["schemaVersion"] == 1 and state["goalId"] == read_json(CONTROL)["goalId"],
             "Unknown rolling state")
+    history = state.get("history")
+    require(isinstance(history, list), "Rolling history missing")
+    if state.get("stable") is None:
+        require(not any(isinstance(event, dict) and event.get("action") == "begin-stable" for event in history),
+                "Stable qualification was already started")
     if action == "retarget":
         require(state.get("stable") is None, "Stable target is frozen")
         target(evidence)
@@ -35,6 +40,8 @@ def transition(state, action, evidence):
         result["edge"] = None
     elif action == "begin-stable":
         require(state.get("stable") is None, "Stable qualification already started")
+        require(state["targetUpstream"] == read_json(CONTROL)["targetUpstream"],
+                "Stable target does not match reviewed control")
         require(evidence.get("status") == "FAST_EDGE_PASS" and
                 evidence.get("goalId") == state["goalId"] and
                 evidence.get("upstreamCommit") == state["targetUpstream"]["commit"],

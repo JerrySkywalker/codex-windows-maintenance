@@ -58,6 +58,18 @@ class RollingTests(unittest.TestCase):
         self.assertEqual((frozen["maintenanceCommit"], frozen["maintenanceTree"]),
                          (self.edge["maintenanceCommit"], self.edge["maintenanceTree"]))
 
+    def test_corrupt_target_or_erased_stable_state_cannot_restart(self):
+        changed = deepcopy(self.state)
+        changed["targetUpstream"] = dict(version="0.160.0", tag="rust-v0.160.0", commit="f" * 40)
+        with self.assertRaisesRegex(ValueError, "reviewed control"):
+            rolling.transition(changed, "begin-stable", self.edge)
+        changed = deepcopy(self.state)
+        changed["history"].append({"action": "begin-stable"})
+        with self.assertRaisesRegex(ValueError, "already started"):
+            rolling.transition(changed, "retarget", self.control["targetUpstream"])
+        with self.assertRaisesRegex(ValueError, "already started"):
+            rolling.transition(changed, "begin-stable", self.edge)
+
     def test_cli_releases_windows_lock_after_success_and_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state.json"
@@ -114,6 +126,8 @@ class DurableJobTests(unittest.TestCase):
             with patch("validation_job.validate_request"):
                 self.assertEqual(verify_receipt(root, "PASS")[1]["status"], "PASS")
                 for field, invalid in (("requestSha256", "0" * 64), ("workerSha256", "0" * 64),
+                                       ("workerIdentity", {**receipt["workerIdentity"], "queryReturn": 0}),
+                                       ("childIdentity", {**receipt["childIdentity"], "lastError": 5}),
                                        ("childIdentity", {**receipt["childIdentity"], "created": 0}),
                                        ("logSha256", "0" * 64),
                                        ("maintenance", {**binding, "path": "C:/other"})):

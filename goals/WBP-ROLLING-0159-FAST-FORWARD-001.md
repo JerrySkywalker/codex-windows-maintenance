@@ -55,8 +55,10 @@ fresh-clone reproduction, hashes and zero owned-child leaks. Long tests and
 qualification run as durable external jobs; persist a request, process identity,
 command/log hashes, source and maintenance identity, final exit and receipts.
 The interactive agent checks receipts without waiting on the long process.
-Interrupted, missing or inconsistent receipts never count as PASS. Upstream skips
-must be explicitly accounted for; focused-68 skips remain forbidden.
+Interrupted, missing or inconsistent receipts never count as PASS. Full-suite
+skips must exactly match the ignored-test identities in bound nextest discovery;
+any nonzero set is `PENDING_SKIP_REVIEW` until independent review accepts those
+exact identities and the resulting receipt. Focused-68 skips remain forbidden.
 
 Ordered promotion: Stable qualification -> source review/release -> provenance
 and manifest review/CI/PR/merge -> side-by-side installed qualification -> G07

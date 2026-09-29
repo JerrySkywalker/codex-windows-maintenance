@@ -37,13 +37,14 @@ def validate_selection(test_args, full_suite=False):
             "Focused validation requires both complete libraries; full suite requires default selection")
 
 
-def validate_accounting(text, full_suite=False):
+def validate_accounting(text, full_suite=False, expected_skips=None):
     require(re.search(r"PASS.*" + re.escape(TEST_NAME), text), "Positive nextest parent assertion did not pass")
     summaries = re.findall(r"(\d+) tests run: (\d+) passed(?:[^\n]*?), (\d+) skipped", text)
     require(bool(summaries), "Nextest result accounting is missing")
     total, passed, skipped = map(int, summaries[-1])
     if full_suite:
-        require(total > 68 and total == passed, "Complete default suite did not pass")
+        require(total > 68 and total == passed and expected_skips is not None and
+                skipped == expected_skips, "Complete default suite or ignored-test accounting mismatch")
     else:
         require((total, passed, skipped) == (68, 68, 0), "Focused Rust accounting mismatch/skip")
     return {"testsRun": total, "passed": passed, "skipped": skipped}
@@ -115,6 +116,10 @@ def main():
            source / "codex-rs", env, output / "nextest-list.json", machine_json=True)
     metadata = read_json(output / "nextest-list.json")
     suites = metadata["rust-suites"]
+    ignored = sorted(({"binaryId": binary_id, "testName": test_name}
+                      for binary_id, suite in suites.items()
+                      for test_name, case in suite["testcases"].items() if case["ignored"]),
+                     key=lambda entry: (entry["binaryId"], entry["testName"]))
     matches = [suite for suite in suites.values() if suite["package-name"] == "codex-app-server-daemon"
                and TEST_NAME in suite["testcases"]]
     require(len(matches) == 1, "Ambiguous or missing exact daemon test binary")
@@ -138,16 +143,20 @@ def main():
     invoke([args.just, "test", "--locked", *test_args, "--status-level", "all", "--final-status-level", "all"],
            source, env, output / "nextest-run.log")
     text = (output / "nextest-run.log").read_text(encoding="utf-8", errors="replace")
-    accounting = validate_accounting(text, args.full_suite)
+    accounting = validate_accounting(text, args.full_suite,
+                                     expected_skips=len(ignored) if args.full_suite else None)
     require(sha(binary) == binding["binarySha256"], "Nextest rebuilt/changed the native-proven binary")
     verify_source()
     receipt, envelope = (read_json(native / name) for name in ("worker-receipt.json", "controller-receipt.json"))
     validate_completed(envelope, receipt, binding)
     require(read_json(native / "host-cleanup.json")["errors"] == [], "Unknown native cleanup")
-    status = "SOURCE_NATIVE_AND_DEFAULT_WORKSPACE_NEXTEST_PASS" if args.full_suite else "SOURCE_NATIVE_AND_FOCUSED_68_NEXTEST_PASS"
+    status = ("SOURCE_NATIVE_AND_DEFAULT_WORKSPACE_NEXTEST_PASS" if not ignored else
+              "SOURCE_NATIVE_AND_DEFAULT_WORKSPACE_NEXTEST_EXECUTED_PENDING_SKIP_REVIEW") if args.full_suite else "SOURCE_NATIVE_AND_FOCUSED_68_NEXTEST_PASS"
     atomic_json(output / "validation.json", {"status": status,
                 "binding": binding, "nextestLogSha256": sha(output / "nextest-run.log"),
-                "accounting": accounting, "fullSuite": args.full_suite, "packageQualification": False})
+                "accounting": accounting, "fullSuite": args.full_suite, "packageQualification": False,
+                "ignoredTestIdentities": ignored if args.full_suite else [],
+                "ignoredDiscoverySha256": sha(output / "nextest-list.json") if args.full_suite else None})
 
 
 if __name__ == "__main__":

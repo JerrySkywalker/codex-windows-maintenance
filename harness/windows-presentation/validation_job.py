@@ -18,6 +18,18 @@ ENV_KEYS = {"PATH", "CARGO_HOME", "RUSTUP_HOME", "RUSTUP_TOOLCHAIN", "CARGO_TARG
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def update_receipt(path, value):
+    # Native fixture atomic_json is deliberately write-once. Job progress replaces
+    # its receipt only after closing and flushing this single writer's temp file.
+    temporary = path.with_suffix(".update")
+    with temporary.open("x", encoding="utf-8") as stream:
+        json.dump(value, stream, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(path)
+
+
 def verify(binding):
     exact(binding["commit"])
     exact(binding["tree"])
@@ -69,7 +81,7 @@ def run(output):
                                      creationflags=subprocess.CREATE_NO_WINDOW)
             receipt["childPid"] = child.pid
             receipt["childIdentity"] = identity(int(child._handle), protocol_only=True)
-            atomic_json(output / "receipt.json", receipt)
+            update_receipt(output / "receipt.json", receipt)
             code = child.wait()
         receipt.update(exitCode=code, logSha256=sha(output / "command.log"), stderrSha256=sha(output / "command.stderr.log"))
         for binding in (request["source"], request["maintenance"]):
@@ -79,7 +91,7 @@ def run(output):
     except Exception:
         receipt.update(status="FAIL", error=traceback.format_exc())
     receipt["finishedUtc"] = datetime.now(timezone.utc).isoformat()
-    atomic_json(output / "receipt.json", receipt)
+    update_receipt(output / "receipt.json", receipt)
 
 
 def main():

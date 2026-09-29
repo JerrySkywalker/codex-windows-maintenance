@@ -11,7 +11,7 @@ from unittest.mock import patch
 from candidate_mapping import read_json
 import rolling_control as rolling
 from release_source_sanity import normalize
-from validation_job import validate_request
+from validation_job import validate_request, run
 
 
 class RollingTests(unittest.TestCase):
@@ -87,6 +87,26 @@ class ReleaseLockTests(unittest.TestCase):
 
 
 class DurableJobTests(unittest.TestCase):
+    def test_real_command_progress_receipt_finishes_and_changed_source_fails(self):
+        for changed in (False, True):
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                binding = dict(path=str(root / "source"), commit="a" * 40, tree="b" * 40)
+                request = dict(schemaVersion=1, kind="DURABLE_VALIDATION_JOB", lane="FAST_EDGE",
+                               env={}, source=binding, maintenance={**binding, "path": str(root / "maintenance")},
+                               cwd=str(root), command=[sys.executable, "-I", "-S", "-c", 'print("durable complete")'])
+                (root / "request.json").write_text(json.dumps(request))
+                calls = [None, None, ValueError("source changed")] if changed else [None] * 4
+                with patch("validation_job.verify", side_effect=calls), patch("validation_job.identity", return_value={"created": 1}):
+                    run(root)
+                receipt = read_json(root / "receipt.json")
+                self.assertEqual(receipt["status"], "FAIL" if changed else "PASS")
+                self.assertEqual(receipt["exitCode"], 0)
+                self.assertIn("finishedUtc", receipt)
+                self.assertIn("childPid", receipt)
+                self.assertEqual((root / "command.log").read_text().strip(), "durable complete")
+                self.assertFalse((root / "receipt.update").exists())
+
     def test_stable_requires_matching_freeze_and_no_secret_environment(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

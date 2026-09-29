@@ -37,17 +37,42 @@ def validate_selection(test_args, full_suite=False):
             "Focused validation requires both complete libraries; full suite requires default selection")
 
 
-def validate_accounting(text, full_suite=False, expected_skips=None):
-    require(re.search(r"PASS.*" + re.escape(TEST_NAME), text), "Positive nextest parent assertion did not pass")
+def parse_accounting(text):
     summaries = re.findall(r"(\d+) tests run: (\d+) passed(?:[^\n]*?), (\d+) skipped", text)
     require(bool(summaries), "Nextest result accounting is missing")
     total, passed, skipped = map(int, summaries[-1])
-    if full_suite:
-        require(total > 68 and total == passed and expected_skips is not None and
-                skipped == expected_skips, "Complete default suite or ignored-test accounting mismatch")
-    else:
-        require((total, passed, skipped) == (68, 68, 0), "Focused Rust accounting mismatch/skip")
     return {"testsRun": total, "passed": passed, "skipped": skipped}
+
+
+def validate_accounting(logs, suites, full_suite=False):
+    pty_log = logs["pty"]
+    rest_log = logs["workspace-rest" if full_suite else "daemon"]
+    require(re.search(r"PASS.*" + re.escape(TEST_NAME), rest_log),
+            "Positive nextest parent assertion did not pass")
+    pty_cases = [case for suite in suites.values() if suite["package-name"] == "codex-utils-pty"
+                 for case in suite["testcases"].values()]
+    rest_cases = [case for suite in suites.values() if suite["package-name"] != "codex-utils-pty"
+                  for case in suite["testcases"].values()]
+    pty = parse_accounting(pty_log)
+    rest = parse_accounting(rest_log)
+    pty_runnable = sum(not case["ignored"] for case in pty_cases)
+    rest_runnable = sum(not case["ignored"] for case in rest_cases)
+    if full_suite:
+        require(pty_runnable > 0 and rest_runnable > 68 and
+                pty == {"testsRun": pty_runnable, "passed": pty_runnable,
+                        "skipped": len(pty_cases) - pty_runnable} and
+                rest == {"testsRun": rest_runnable, "passed": rest_runnable,
+                         "skipped": len(pty_cases) + len(rest_cases) - rest_runnable},
+                "Complete default suite or ignored-test accounting mismatch")
+    else:
+        require(len(pty_cases) == 26 and len(rest_cases) == 42 and
+                pty == {"testsRun": 26, "passed": 26, "skipped": 0} and
+                rest == {"testsRun": 42, "passed": 42, "skipped": 0},
+                "Focused Rust accounting mismatch/skip")
+    return {"testsRun": pty["testsRun"] + rest["testsRun"],
+            "passed": pty["passed"] + rest["passed"],
+            "skipped": (len(pty_cases) - pty_runnable) + (len(rest_cases) - rest_runnable),
+            "groups": {"pty": pty, "workspace-rest" if full_suite else "daemon": rest}}
 
 
 def main():
@@ -141,15 +166,20 @@ def main():
     run_host(binary, binding, native)
     env.update(CODEX_TEST_NATIVE_DIR=str(native), CODEX_TEST_NATIVE_RUN_ID=binding["runId"],
                CODEX_TEST_NATIVE_SOURCE_COMMIT=args.commit, CODEX_TEST_NATIVE_SOURCE_TREE=args.tree)
-    # Keep every discovered test while serializing process-heavy Windows cases.
-    # The upstream ConPTY Ctrl-C case lost control input twice under parallel
-    # fanout on this host, then passed both alone and in a serial focused run.
-    invoke([args.just, "test", "--locked", *test_args, "--test-threads", "1",
-            "--status-level", "all", "--final-status-level", "all"],
-           source, env, output / "nextest-run.log")
-    text = (output / "nextest-run.log").read_text(encoding="utf-8", errors="replace")
-    accounting = validate_accounting(text, args.full_suite,
-                                     expected_skips=len(ignored) if args.full_suite else None)
+    # Run the PTY binary before the rest of the workspace. The upstream
+    # ConPTY Ctrl-C test intermittently loses its one control input only after
+    # the combined 68-test nextest session; each complete package run passes.
+    pty_args = ["-p", "codex-utils-pty"] + ([] if args.full_suite else ["--lib"])
+    rest_args = (["--filterset", "not package(codex-utils-pty)"] if args.full_suite else
+                 ["-p", "codex-app-server-daemon", "--lib"])
+    logs = {}
+    for group, selection in (("pty", pty_args),
+                             ("workspace-rest" if args.full_suite else "daemon", rest_args)):
+        log = output / f"nextest-{group}.log"
+        invoke([args.just, "test", "--locked", *selection, "--test-threads", "1",
+                "--status-level", "all", "--final-status-level", "all"], source, env, log)
+        logs[group] = log.read_text(encoding="utf-8", errors="replace")
+    accounting = validate_accounting(logs, suites, args.full_suite)
     require(sha(binary) == binding["binarySha256"], "Nextest rebuilt/changed the native-proven binary")
     verify_source()
     receipt, envelope = (read_json(native / name) for name in ("worker-receipt.json", "controller-receipt.json"))
@@ -158,7 +188,8 @@ def main():
     status = ("SOURCE_NATIVE_AND_DEFAULT_WORKSPACE_NEXTEST_PASS" if not ignored else
               "SOURCE_NATIVE_AND_DEFAULT_WORKSPACE_NEXTEST_EXECUTED_PENDING_SKIP_REVIEW") if args.full_suite else "SOURCE_NATIVE_AND_FOCUSED_68_NEXTEST_PASS"
     atomic_json(output / "validation.json", {"status": status,
-                "binding": binding, "nextestLogSha256": sha(output / "nextest-run.log"),
+                "binding": binding, "nextestLogSha256": {group: sha(output / f"nextest-{group}.log")
+                                                    for group in logs},
                 "accounting": accounting, "fullSuite": args.full_suite, "packageQualification": False,
                 "ignoredTestIdentities": ignored if args.full_suite else [],
                 "ignoredDiscoverySha256": sha(output / "nextest-list.json") if args.full_suite else None})

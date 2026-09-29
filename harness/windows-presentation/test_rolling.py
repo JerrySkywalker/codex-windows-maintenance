@@ -116,16 +116,19 @@ class DurableJobTests(unittest.TestCase):
             (root / "request.json").write_text(json.dumps(request))
             def clean_identity(handle):
                 return dict(pid=pid_of(handle), created=1, queryReturn=1, lastError=0, inJob=False)
-            with patch("validation_job.verify"), patch("validation_job.identity", side_effect=clean_identity):
+            with patch("validation_job.verify"), patch("validation_job.identity", side_effect=clean_identity), \
+                    patch("validation_job.console_attached", return_value=True):
                 run(root)
             receipt = read_json(root / "receipt.json")
             launch = dict(pid=receipt["pid"], requestSha256=sha(root / "request.json"),
                           workerIdentity=receipt["workerIdentity"], workerSha256=sha(sys.modules["validation_job"].__file__),
-                          workerExecutable=sys.executable, workerExecutableSha256=sha(sys.executable))
+                          workerExecutable=sys.executable, workerExecutableSha256=sha(sys.executable),
+                          workerLaunchMode="HIDDEN_NEW_CONSOLE")
             (root / "launch.json").write_text(json.dumps(launch))
             with patch("validation_job.validate_request"):
                 self.assertEqual(verify_receipt(root, "PASS")[1]["status"], "PASS")
                 for field, invalid in (("requestSha256", "0" * 64), ("workerSha256", "0" * 64),
+                                       ("workerConsoleAttached", False),
                                        ("workerIdentity", {**receipt["workerIdentity"], "queryReturn": 0}),
                                        ("childIdentity", {**receipt["childIdentity"], "lastError": 5}),
                                        ("childIdentity", {**receipt["childIdentity"], "created": 0}),
@@ -153,7 +156,9 @@ class DurableJobTests(unittest.TestCase):
                                cwd=str(root), command=[sys.executable, "-I", "-S", "-c", 'print("durable complete")'])
                 (root / "request.json").write_text(json.dumps(request))
                 calls = [None, None, ValueError("source changed")] if changed else [None] * 4
-                with patch("validation_job.verify", side_effect=calls), patch("validation_job.identity", return_value={"created": 1}):
+                with patch("validation_job.verify", side_effect=calls), \
+                        patch("validation_job.identity", return_value={"created": 1}), \
+                        patch("validation_job.console_attached", return_value=True):
                     run(root)
                 receipt = read_json(root / "receipt.json")
                 self.assertEqual(receipt["status"], "FAIL" if changed else "PASS")

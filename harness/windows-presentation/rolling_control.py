@@ -67,32 +67,33 @@ def main():
         return
     # Exclusive transition lock: abandoned locks require explicit investigation.
     lock = args.state.with_suffix(".transition.lock")
-    with lock.open("x"):
-        try:
-            if args.action == "init":
-                require(not args.state.exists(), "Rolling state already exists")
-                control = read_json(CONTROL)
-                value = {"schemaVersion": 1, "goalId": control["goalId"],
-                         "targetUpstream": control["targetUpstream"], "edge": None, "stable": None,
-                         "history": []}
-            else:
-                require(args.evidence is not None, "Evidence required")
-                value = transition(read_json(args.state), args.action, read_json(args.evidence))
-            event = {"action": args.action, "utc": datetime.now(timezone.utc).isoformat(),
-                     "controlSha256": sha(CONTROL)}
-            if args.evidence:
-                event["evidenceSha256"] = sha(args.evidence)
-                if args.action == "begin-stable":
-                    value["stable"]["edgeEvidenceSha256"] = event["evidenceSha256"]
-                    value["stable"]["startedUtc"] = event["utc"]
-            value["history"].append(event)
-            temporary = args.state.with_suffix(".new")
-            with temporary.open("x", encoding="utf-8") as stream:
-                json.dump(value, stream, indent=2)
-                stream.write("\n")
-            temporary.replace(args.state)
-        finally:
-            lock.unlink()
+    lock_file = lock.open("x")
+    try:
+        if args.action == "init":
+            require(not args.state.exists(), "Rolling state already exists")
+            control = read_json(CONTROL)
+            value = {"schemaVersion": 1, "goalId": control["goalId"],
+                     "targetUpstream": control["targetUpstream"], "edge": None, "stable": None,
+                     "history": []}
+        else:
+            require(args.evidence is not None, "Evidence required")
+            value = transition(read_json(args.state), args.action, read_json(args.evidence))
+        event = {"action": args.action, "utc": datetime.now(timezone.utc).isoformat(),
+                 "controlSha256": sha(CONTROL)}
+        if args.evidence:
+            event["evidenceSha256"] = sha(args.evidence)
+            if args.action == "begin-stable":
+                value["stable"]["edgeEvidenceSha256"] = event["evidenceSha256"]
+                value["stable"]["startedUtc"] = event["utc"]
+        value["history"].append(event)
+        temporary = args.state.with_suffix(".new")
+        with temporary.open("x", encoding="utf-8") as stream:
+            json.dump(value, stream, indent=2)
+            stream.write("\n")
+        temporary.replace(args.state)
+    finally:
+        lock_file.close()
+        lock.unlink()
 
 
 if __name__ == "__main__":

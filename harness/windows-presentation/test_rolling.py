@@ -2,6 +2,8 @@
 from copy import deepcopy
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -48,6 +50,20 @@ class RollingTests(unittest.TestCase):
             invalid[key] = value
             with self.subTest(key=key), self.assertRaises(ValueError):
                 rolling.transition(self.state, "begin-stable", invalid)
+
+    def test_cli_releases_windows_lock_after_success_and_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state.json"
+            command = [sys.executable, "-S", "-B", rolling.__file__, "init", "--state", str(state)]
+            result = subprocess.run(command, capture_output=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIsNone(read_json(state)["stable"])
+            self.assertFalse(state.with_suffix(".transition.lock").exists())
+            before = state.read_bytes()
+            result = subprocess.run(command, capture_output=True, timeout=15)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(state.read_bytes(), before)
+            self.assertFalse(state.with_suffix(".transition.lock").exists())
 
 
 class ReleaseLockTests(unittest.TestCase):

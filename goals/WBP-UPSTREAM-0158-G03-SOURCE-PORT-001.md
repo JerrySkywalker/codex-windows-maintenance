@@ -38,3 +38,9 @@ Purpose: create the smallest architecture-preserving 0.158.0 WBP source candidat
 The bounded [G03R lock normalization](WBP-UPSTREAM-0158-G03R-LOCKFILE-NORMALIZATION-001.md)
 permits only the verified 158 local package version corrections after maintenance
 review, CI and merge. Map this delta separately from the Windows behavior boundaries.
+
+The Owner-authorized [G03S fixture host contract](WBP-UPSTREAM-0158-G03S-FIXTURE-HOST-CONTRACT-001.md)
+requires native real-guard proof **and** nextest results **and** exact identity and
+cleanup binding. Preserve every original focused test (68/68, zero skips). A
+native-only receipt or a nextest-only run cannot close source lifetime validation.
+Merge the reviewed and CI-validated maintenance contract before relying on it.

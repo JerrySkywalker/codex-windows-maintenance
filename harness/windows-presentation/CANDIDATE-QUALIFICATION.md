@@ -1,5 +1,43 @@
 # Unreleased candidate qualification
 
+## Source validation before package qualification
+
+[G03S](../../goals/WBP-UPSTREAM-0158-G03S-FIXTURE-HOST-CONTRACT-001.md) adds
+`scripts/validate-source.ps1` for G03. Supply exact clean source commit/tree,
+Python/just/cargo/toolchain/cache/dependency paths, target directory and a new
+external output directory. Focused mode requires both complete PTY and daemon
+libraries and unconditionally requires 68 pass/zero skips. Compile and run through pinned nextest and
+`just test`; the native phase re-executes only the exact selected positive test
+from nextest metadata, then nextest executes its real bound-receipt assertion.
+Pass `-FullSuite` for the Owner-approved complete default suite, rebuilding and
+regenerating evidence for that build scope. Never substitute direct `cargo test`.
+
+The one-shot controller proves worker/child no-Job membership with native APIs,
+holds original worker and transferred child handles, and rejects uncertain exit
+or cleanup. The source fixture's test-only suspended child uses
+`DEBUG_ONLY_THIS_PROCESS` with checked `DebugSetProcessKillOnExit(TRUE)` to close
+the spawn-to-registration crash interval. This changes no product guard or Job
+policy. Normal source cleanup drains only that child's debug events, closes
+debug image files, kills/reaps/drops the original Tokio Child, then writes its
+receipt. Missing or mismatched receipts fail the nextest parent and overall run.
+The worker publishes its original child handle and holds that Child while awaiting
+registration. The controller duplicates it from its original worker process
+handle directly into itself, verifies the duplicate, and acknowledges before the
+guard. Worker crashes cannot leave an unpublished remote target handle.
+
+CI exercises disposable inherited-Job synthetic workers and every required
+protocol/cleanup fault, recording truthful Job membership. Their kind is
+`HARNESS_PROTOCOL_ONLY`, and their guard label is `HARNESS_PROTOCOL_EXERCISED`;
+SOURCE validation unconditionally rejects them. CI also tests fail-closed SOURCE
+host rejection and records actual hosted Job/API capability diagnostics.
+SOURCE makes exactly one clean launch attempt and never falls back to this
+protocol mode. Actual clean Rust-worker guard/fault proof remains mandatory in
+G03; every original 68-case assertion must execute with zero skips.
+G03 source validation does not build or qualify a package;
+the G04 package workflow below remains separate.
+
+## Candidate package mapping
+
 The stable `manifest.json` remains unchanged until G06. Candidate build and
 qualification use a separate, caller-owned JSON file with exactly these fields:
 

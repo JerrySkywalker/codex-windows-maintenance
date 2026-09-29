@@ -10,7 +10,11 @@ permissions:
 
 jobs:
   validate:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-2022]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +28,11 @@ jobs:
             'harness/windows-presentation/LifetimeFixture.cs', 'harness/windows-presentation/bundled_rg_probe.py',
             'harness/windows-presentation/test_hardening.py',
             'harness/windows-presentation/validate_windows_fixtures.py', 'harness/windows-presentation/CANDIDATE-QUALIFICATION.md')
+          $required += @('scripts/validate-source.ps1', 'harness/windows-presentation/source_validation.py',
+            'harness/windows-presentation/source_fixture_contract.py', 'harness/windows-presentation/source_fixture_host.py',
+            'harness/windows-presentation/SourceFixtureSynthetic.cs',
+            'harness/windows-presentation/test_source_fixture_contract.py', 'harness/windows-presentation/test_source_fixture_host.py',
+            'harness/windows-presentation/test_source_fixture_accounting.py', 'harness/windows-presentation/probe_fixture_host.py')
           foreach ($path in $required) { if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing $path" } }
           foreach ($path in (Get-ChildItem scripts,harness -Recurse -Filter '*.ps1').FullName) {
             $tokens = $null; $errors = $null
@@ -33,6 +42,18 @@ jobs:
           $manifest = Get-Content manifest.json -Raw | ConvertFrom-Json
           if (-not $manifest.downstreamTag -or -not $manifest.downstreamCommit -or -not $manifest.downstreamTree) { throw 'Incomplete source mapping' }
           python -c "import ast, pathlib; [ast.parse(path.read_text(encoding='utf-8')) for path in pathlib.Path('harness').rglob('*.py')]"
+      - name: Record native host capability without changing Jobs
+        shell: pwsh
+        run: |
+          $probeDir = Join-Path $env:RUNNER_TEMP 'wbp-host-capability'
+          New-Item -ItemType Directory -Path $probeDir | Out-Null
+          $probeExe = Join-Path $probeDir 'Synthetic.exe'
+          $compiler = Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+          $probeSource = (Resolve-Path -LiteralPath 'harness/windows-presentation/SourceFixtureSynthetic.cs').Path
+          & $compiler /nologo /target:exe /platform:x64 /reference:System.Web.Extensions.dll "/out:$probeExe" $probeSource
+          if ($LASTEXITCODE -ne 0) { throw 'Host probe compile failed' }
+          python -B harness/windows-presentation/probe_fixture_host.py --binary $probeExe --output (Join-Path $probeDir 'host.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Host probe cleanup failed' }
       - name: Focused candidate and daemon contract tests
         shell: pwsh
         run: ./scripts/test-hardening.ps1 -Python (Get-Command python).Source -OutputDir "$env:RUNNER_TEMP/wbp-hardening"

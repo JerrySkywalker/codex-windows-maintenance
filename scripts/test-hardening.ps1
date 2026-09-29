@@ -18,7 +18,7 @@ Push-Location $repoRoot
 try {
     & $Python -B -c "import ast, pathlib; [ast.parse(p.read_text(encoding='utf-8-sig')) for p in pathlib.Path('harness').rglob('*.py')]"
     if ($LASTEXITCODE -ne 0) { throw 'Python syntax validation failed' }
-    & $Python -B -c "import unittest, sys; suite = unittest.defaultTestLoader.discover('harness/windows-presentation', pattern='test_hardening.py'); assert suite.countTestCases() > 0, 'Focused suite is empty'; sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())" *> (Join-Path $OutputDir 'unit-tests.log')
+    & $Python -B -c "import unittest, sys; loader = unittest.TestLoader(); suite = unittest.TestSuite(loader.discover('harness/windows-presentation', pattern=p) for p in ('test_hardening.py', 'test_source_fixture*.py')); assert suite.countTestCases() > 0, 'Focused suite is empty'; sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())" *> (Join-Path $OutputDir 'unit-tests.log')
     if ($LASTEXITCODE -ne 0) {
         Get-Content -LiteralPath (Join-Path $OutputDir 'unit-tests.log') | Write-Output
         throw 'Focused hardening tests failed'

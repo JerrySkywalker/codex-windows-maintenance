@@ -37,12 +37,15 @@ class SourceFixtureHostTests(unittest.TestCase):
     def test_build_discovery_preserves_only_installation_locations(self):
         locations = {"ProgramFiles": "C:\\Program Files", "ProgramFiles(x86)": "C:\\Program Files (x86)",
                      "ProgramW6432": "C:\\Program Files", "SystemDrive": "C:"}
+        isolated_home = Path(self.root.name) / "discovery-home"
         with patch.dict(os.environ, {**locations, "OPENAI_API_KEY": "synthetic-test-secret",
+                                     "HOME": "C:\\unrelated-personal-home",
                                      "USERPROFILE": "C:\\unrelated-personal-home"}):
-            env = source_fixture_host.isolated_env(Path(self.root.name) / "discovery-home", {})
+            env = source_fixture_host.isolated_env(isolated_home, {})
         self.assertEqual({key: env[key] for key in locations}, locations)
         self.assertNotIn("OPENAI_API_KEY", env)
-        self.assertNotEqual(env["USERPROFILE"], "C:\\unrelated-personal-home")
+        self.assertEqual({key: env[key] for key in ("HOME", "USERPROFILE")},
+                         {"HOME": str(isolated_home), "USERPROFILE": str(isolated_home)})
 
     def test_exit_race_requires_same_owned_handle_exit(self):
         def exited(*args):

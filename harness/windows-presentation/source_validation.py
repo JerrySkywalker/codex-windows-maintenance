@@ -111,7 +111,8 @@ def main():
     invoke([args.cargo, "nextest", "--version"], source / "codex-rs", env, output / "nextest-version.log")
     require(re.search(r"cargo-nextest 0\.9\.103\b", (output / "nextest-version.log").read_text()),
             "Source validation requires upstream-pinned nextest 0.9.103")
-    invoke([args.just, "test", "--locked", *test_args, "--no-run"], source, env, output / "compile.log")
+    # nextest list compiles the test binaries before discovery. The just test
+    # recipe fixes --no-fail-fast, which nextest rejects alongside --no-run.
     invoke([args.cargo, "nextest", "list", "--locked", *test_args, "--message-format", "json"],
            source / "codex-rs", env, output / "nextest-list.json", machine_json=True)
     metadata = read_json(output / "nextest-list.json")

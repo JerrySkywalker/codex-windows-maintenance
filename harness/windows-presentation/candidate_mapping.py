@@ -42,7 +42,7 @@ def write_json(path, value):
 
 def git(source, *args):
     result = subprocess.run(["git", "-C", str(source), *args], capture_output=True,
-                            text=True, timeout=30,
+                            text=True, encoding="utf-8", timeout=30,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     require(result.returncode == 0, f"Git verification failed: {args}")
     return result.stdout.strip()

@@ -32,3 +32,9 @@ Purpose: create the smallest architecture-preserving 0.158.0 WBP source candidat
 ## PASS
 
 `PASS_G03_WBP_0158_SOURCE_CANDIDATE`
+
+## Owner-authorized release-source amendment
+
+The bounded [G03R lock normalization](WBP-UPSTREAM-0158-G03R-LOCKFILE-NORMALIZATION-001.md)
+permits only the verified 158 local package version corrections after maintenance
+review, CI and merge. Map this delta separately from the Windows behavior boundaries.

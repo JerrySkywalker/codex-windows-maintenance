@@ -1,0 +1,28 @@
+{
+  "upstreamCommit": "064c6b8c737f5b41d171fdda80bd9ef10ad06eb3",
+  "upstreamParent": "f3d021e0df2d3b5a350f5cf57fe0b901b05634bd",
+  "workspaceVersion": "0.158.0",
+  "releaseChangedOnlyWorkspaceVersion": true,
+  "releaseLockfileUnchanged": true,
+  "expectedLocalPackageCount": 158,
+  "explicitMemberCount": 153,
+  "automaticMembers": [
+    "app_test_support",
+    "codex-chatgpt",
+    "codex-message-history",
+    "codex-windows-sandbox",
+    "core_test_support"
+  ],
+  "localVersionChanges": 158,
+  "externalVersionChanges": 0,
+  "externalSourceChanges": 0,
+  "externalChecksumChanges": 0,
+  "dependencyEdgeChanges": 0,
+  "featureChanges": 0,
+  "externalRecordsByteEquivalent": true,
+  "externalRecordsSemanticEquivalent": true,
+  "oldLockSha256": "5c3fd1fe59676117cd7fc9c55daafee90d95d0afedd13b9e1a71e10cad029a81",
+  "normalizedLockSha256": "e93a06df3e346a7de763d5715715eaf51675a83a632c14e22ca3e5651c1fc74d",
+  "cargoTomlSha256": "b1eecc84e76fe6e1ed45d752f3ac5b1dff415be7738ff1a3414b4ef3b7519516",
+  "expectedSetSha256": "928fd0ecec5e08ff203c12113e704f34f970284fde5fb9b02d368d1610edee9f"
+}

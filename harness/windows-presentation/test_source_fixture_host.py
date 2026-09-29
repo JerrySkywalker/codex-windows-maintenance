@@ -34,6 +34,16 @@ class SourceFixtureHostTests(unittest.TestCase):
                 "sourceCommit": "1" * 40, "sourceTree": "2" * 40,
                 "testName": TEST_NAME, "binarySha256": sha(self.binary)}
 
+    def test_build_discovery_preserves_only_installation_locations(self):
+        locations = {"ProgramFiles": "C:\\Program Files", "ProgramFiles(x86)": "C:\\Program Files (x86)",
+                     "ProgramW6432": "C:\\Program Files", "SystemDrive": "C:"}
+        with patch.dict(os.environ, {**locations, "OPENAI_API_KEY": "synthetic-test-secret",
+                                     "USERPROFILE": "C:\\unrelated-personal-home"}):
+            env = source_fixture_host.isolated_env(Path(self.root.name) / "discovery-home", {})
+        self.assertEqual({key: env[key] for key in locations}, locations)
+        self.assertNotIn("OPENAI_API_KEY", env)
+        self.assertNotEqual(env["USERPROFILE"], "C:\\unrelated-personal-home")
+
     def test_exit_race_requires_same_owned_handle_exit(self):
         def exited(*args):
             source_fixture_host.c.set_last_error(5)

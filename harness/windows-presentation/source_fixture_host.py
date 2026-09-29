@@ -112,8 +112,11 @@ def atomic_json(path, data):
 
 def isolated_env(home, extra):
     # Allowlist avoids consulting account credentials or personal application state.
+    # Installed MSVC/SDK discovery needs standard installation locations. These
+    # paths carry no account authentication or personal configuration.
     allowed = ("SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "PROCESSOR_ARCHITECTURE",
-               "NUMBER_OF_PROCESSORS")
+               "NUMBER_OF_PROCESSORS", "ProgramFiles", "ProgramFiles(x86)",
+               "ProgramW6432", "SystemDrive")
     env = {key: os.environ[key] for key in allowed if key in os.environ}
     for folder in (home, home / ".codex", home / "tmp", home / "roaming", home / "local"):
         folder.mkdir(parents=True, exist_ok=True)

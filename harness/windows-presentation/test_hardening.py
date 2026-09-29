@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import struct
+import subprocess
 import tempfile
 import threading
 import time
@@ -125,6 +126,14 @@ class MappingTests(unittest.TestCase):
         self.file.write_text('{"kind":"RELEASED","kind":"UNRELEASED_CANDIDATE"}')
         with self.assertRaises(ValueError):
             mapping.read_json(self.file)
+
+    def test_git_source_json_decodes_utf8_on_windows(self):
+        subprocess.run(["git", "init", str(self.root)], check=True, capture_output=True)
+        (self.root / "unicode.json").write_text('{"symbol":"🦊"}', encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.root), "add", "unicode.json"],
+                       check=True, capture_output=True)
+        self.assertEqual(json.loads(mapping.git(self.root, "show", ":unicode.json")),
+                         {"symbol": "🦊"})
 
 
 class CatalogTests(unittest.TestCase):

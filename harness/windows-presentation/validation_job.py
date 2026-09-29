@@ -1,5 +1,6 @@
 """External validation worker. Requests and receipts survive the interactive session."""
 import argparse
+import ctypes
 from datetime import datetime, timezone
 import json
 import os
@@ -16,6 +17,10 @@ ENV_KEYS = {"PATH", "CARGO_HOME", "RUSTUP_HOME", "RUSTUP_TOOLCHAIN", "CARGO_TARG
             "CARGO_HTTP_TIMEOUT", "CARGO_NET_RETRY", "CARGO_NET_GIT_FETCH_WITH_CLI",
             "NEXTEST_PROFILE", "UV_HTTP_TIMEOUT", "UV_HTTP_RETRIES", "BAZELISK_HOME"}
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def console_attached():
+    return bool(ctypes.windll.kernel32.GetConsoleWindow())
 
 
 def update_receipt(path, value):
@@ -76,7 +81,9 @@ def verify_receipt(output, expected_status, *, executing=False):
             "Durable receipt status or source binding mismatch")
     require(receipt.get("requestSha256") == launch.get("requestSha256") == sha(request_path) and
             receipt.get("workerSha256") == launch.get("workerSha256") == sha(__file__) and
-            receipt.get("executableSha256") == sha(request["command"][0]), "Durable command/code hash mismatch")
+            receipt.get("executableSha256") == sha(request["command"][0]) and
+            launch.get("workerLaunchMode") == "HIDDEN_NEW_CONSOLE" and
+            receipt.get("workerConsoleAttached") is True, "Durable command/code/console mismatch")
     worker = receipt.get("workerIdentity")
     child = receipt.get("childIdentity")
     require(isinstance(worker, dict) and isinstance(child, dict) and
@@ -121,6 +128,8 @@ def run(output):
     atomic_json(output / "receipt.json", receipt)
     try:
         receipt["workerIdentity"] = identity(current())
+        receipt["workerConsoleAttached"] = console_attached()
+        require(receipt["workerConsoleAttached"], "Durable worker has no console for ConPTY qualification")
         validate_request(request, output)
         env = isolated_env(output / "home", {})
         env.update(request["env"])
@@ -162,18 +171,22 @@ def main():
         validate_request(request, output)
         output.mkdir()
         atomic_json(output / "request.json", request)
-        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_BREAKAWAY_FROM_JOB
+        flags = subprocess.CREATE_NEW_CONSOLE | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_BREAKAWAY_FROM_JOB
+        startup = subprocess.STARTUPINFO()
+        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup.wShowWindow = subprocess.SW_HIDE
         # Failed breakaway is a blocker, never an in-session fallback.
         try:
             with (output / "worker.log").open("xb") as log:
                 process = subprocess.Popen([sys.executable, "-S", "-B", str(Path(__file__).resolve()), "run", "--output", str(output)],
                                            cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                                           creationflags=flags, close_fds=True)
+                                           creationflags=flags, startupinfo=startup, close_fds=True)
         except OSError:
             atomic_json(output / "receipt.json", {"status": "LAUNCH_FAILED", "error": traceback.format_exc(),
                         "requestSha256": sha(output / "request.json")})
             raise
         atomic_json(output / "launch.json", {"pid": process.pid, "requestSha256": sha(output / "request.json"),
+                    "workerLaunchMode": "HIDDEN_NEW_CONSOLE",
                     "workerIdentity": identity(int(process._handle)), "workerExecutable": sys.executable,
                     "workerExecutableSha256": sha(sys.executable),
                     "workerSha256": sha(__file__), "utc": datetime.now(timezone.utc).isoformat()})

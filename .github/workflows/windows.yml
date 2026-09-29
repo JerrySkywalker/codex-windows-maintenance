@@ -24,6 +24,10 @@ jobs:
             'harness/windows-presentation/LifetimeFixture.cs', 'harness/windows-presentation/bundled_rg_probe.py',
             'harness/windows-presentation/test_hardening.py',
             'harness/windows-presentation/validate_windows_fixtures.py', 'harness/windows-presentation/CANDIDATE-QUALIFICATION.md')
+          $required += @('scripts/validate-source.ps1', 'harness/windows-presentation/source_validation.py',
+            'harness/windows-presentation/source_fixture_contract.py', 'harness/windows-presentation/source_fixture_host.py',
+            'harness/windows-presentation/SourceFixtureSynthetic.cs',
+            'harness/windows-presentation/test_source_fixture_contract.py', 'harness/windows-presentation/test_source_fixture_host.py')
           foreach ($path in $required) { if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing $path" } }
           foreach ($path in (Get-ChildItem scripts,harness -Recurse -Filter '*.ps1').FullName) {
             $tokens = $null; $errors = $null

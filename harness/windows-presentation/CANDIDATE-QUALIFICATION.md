@@ -1,5 +1,33 @@
 # Unreleased candidate qualification
 
+## Source validation before package qualification
+
+[G03S](../../goals/WBP-UPSTREAM-0158-G03S-FIXTURE-HOST-CONTRACT-001.md) adds
+`scripts/validate-source.ps1` for G03. Supply exact clean source commit/tree,
+Python/just/cargo/toolchain/cache/dependency paths, target directory and a new
+external output directory. Its default selection is both PTY and daemon libraries;
+use `-FocusedCount 68` for this train. Compile and run through pinned nextest and
+`just test`; the native phase re-executes only the exact selected positive test
+from nextest metadata, then nextest executes its real bound-receipt assertion.
+Pass `-TestArgs @()` for the Owner-approved complete default suite, rebuilding and
+regenerating evidence for that build scope. Never substitute direct `cargo test`.
+
+The one-shot controller proves worker/child no-Job membership with native APIs,
+holds original worker and transferred child handles, and rejects uncertain exit
+or cleanup. The source fixture's test-only suspended child uses
+`DEBUG_ONLY_THIS_PROCESS` with checked `DebugSetProcessKillOnExit(TRUE)` to close
+the spawn-to-registration crash interval. This changes no product guard or Job
+policy. Normal source cleanup drains only that child's debug events, closes
+debug image files, kills/reaps/drops the original Tokio Child, then writes its
+receipt. Missing or mismatched receipts fail the nextest parent and overall run.
+
+CI exercises disposable synthetic workers and required rejection/cleanup faults.
+Its receipts are explicitly `HARNESS_SYNTHETIC_FIXTURE` and cannot qualify the
+Rust source guard. G03 source validation does not build or qualify a package;
+the G04 package workflow below remains separate.
+
+## Candidate package mapping
+
 The stable `manifest.json` remains unchanged until G06. Candidate build and
 qualification use a separate, caller-owned JSON file with exactly these fields:
 

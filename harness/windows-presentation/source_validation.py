@@ -141,7 +141,11 @@ def main():
     run_host(binary, binding, native)
     env.update(CODEX_TEST_NATIVE_DIR=str(native), CODEX_TEST_NATIVE_RUN_ID=binding["runId"],
                CODEX_TEST_NATIVE_SOURCE_COMMIT=args.commit, CODEX_TEST_NATIVE_SOURCE_TREE=args.tree)
-    invoke([args.just, "test", "--locked", *test_args, "--status-level", "all", "--final-status-level", "all"],
+    # Keep every discovered test while serializing process-heavy Windows cases.
+    # The upstream ConPTY Ctrl-C case lost control input twice under parallel
+    # fanout on this host, then passed both alone and in a serial focused run.
+    invoke([args.just, "test", "--locked", *test_args, "--test-threads", "1",
+            "--status-level", "all", "--final-status-level", "all"],
            source, env, output / "nextest-run.log")
     text = (output / "nextest-run.log").read_text(encoding="utf-8", errors="replace")
     accounting = validate_accounting(text, args.full_suite,

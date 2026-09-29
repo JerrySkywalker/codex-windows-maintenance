@@ -11,7 +11,7 @@ param(
     [Parameter(Mandatory)][string]$TargetDir,
     [Parameter(Mandatory)][string]$OutputDir,
     [string[]]$DependencyPath = @(),
-    [int]$FocusedCount = 0,
+    [switch]$FullSuite,
     [string[]]$TestArgs = @('-p', 'codex-utils-pty', '-p', 'codex-app-server-daemon', '--lib')
 )
 $ErrorActionPreference = 'Stop'
@@ -21,7 +21,10 @@ $arguments = @('-B', (Join-Path $repoRoot 'harness/windows-presentation/source_v
     '--toolchain', $Toolchain, '--cargo-home', $CargoHome, '--rustup-home', $RustupHome,
     '--target-dir', $TargetDir, '--output', $OutputDir)
 foreach ($path in $DependencyPath) { $arguments += @('--dependency-path', $path) }
-if ($FocusedCount -gt 0) { $arguments += @('--focused-count', [string]$FocusedCount) }
+if ($FullSuite) {
+    $arguments += @('--full-suite')
+    if (-not $PSBoundParameters.ContainsKey('TestArgs')) { $TestArgs = @() }
+}
 $arguments += @('--') + $TestArgs
 & $Python @arguments
 if ($LASTEXITCODE -ne 0) { throw 'Source native/nextest validation failed' }

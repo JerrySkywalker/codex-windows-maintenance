@@ -15,8 +15,9 @@ Focused acceptance requires all of the following on the same exact source tree:
 
 - Compile through `just test` and pinned nextest; discover one exact daemon test
   binary through matching nextest metadata, and seal its hash/build scope.
-- Launch with supported breakaway; both native controller and Rust worker must
-  successfully prove absence of all Job membership. Failed/unknown query fails.
+- Launch with supported breakaway; native controller and Rust worker must each
+  prove the worker and fixture child have no Job membership. The controller may
+  retain ambient Jobs. Failed/unknown worker/child query fails.
 - Execute the actual `ensure_detached_child` with a real Tokio Child. Verify
   child membership independently before calling the guard. Guard must accept.
 - Register a stable cleanup handle with the controller before the guard. Prove

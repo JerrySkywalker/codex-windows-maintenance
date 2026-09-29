@@ -32,6 +32,8 @@ image_of = api("QueryFullProcessImageNameW", [w.HANDLE, w.DWORD, w.LPWSTR, c.POI
 resume = api("ResumeThread", [w.HANDLE], w.DWORD)
 exit_of = api("GetExitCodeProcess", [w.HANDLE, c.POINTER(w.DWORD)])
 open_process = api("OpenProcess", [w.DWORD, w.BOOL, w.DWORD], w.HANDLE)
+duplicate = api("DuplicateHandle", [w.HANDLE, w.HANDLE, w.HANDLE, c.POINTER(w.HANDLE),
+                w.DWORD, w.BOOL, w.DWORD])
 
 
 class Startup(c.Structure):
@@ -169,7 +171,8 @@ def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault=
         while time.monotonic() < deadline:
             # Harness-only observation proves the kernel crash backstop without
             # registering or terminating this child. Never used for source PASS.
-            if synthetic and fault == "crash-before-registration" and fault_observer_handle is None:
+            if synthetic and fault in ("crash-before-debug-check", "crash-before-registration",
+                                       "crash-during-registration") and fault_observer_handle is None:
                 fault_file = output / "fault-child.json"
                 if fault_file.exists():
                     observed = read_json(fault_file)
@@ -190,14 +193,24 @@ def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault=
                 record = read_json(registration)
                 require(record["binding"] == binding and record["worker"] == worker_record,
                         "Registration binding/worker mismatch")
-                handle = record["handle"]
-                require(type(handle) is int and handle > 0, "Invalid registered handle")
-                # Do not terminate or close an unverified purported process handle.
-                child_record = identity(handle)
-                require(record["child"] == child_record and image(handle) == binary and
-                        child_record["pid"] != info.pid and
-                        child_record["created"] >= worker_record["created"], "Wrong registered child")
-                child_handle = handle
+                source_handle = record["sourceHandle"]
+                require(type(source_handle) is int and source_handle > 0, "Invalid source handle")
+                # Controller receives its duplicate directly from the API. There
+                # is no remote target-handle publication interval on worker death.
+                owned = w.HANDLE()
+                checked(duplicate(info.process, source_handle, current(), c.byref(owned),
+                                  0, False, 2), "Duplicate original worker-owned child handle")
+                try:
+                    child_record = identity(owned.value)
+                    require(record["child"] == child_record and image(owned.value) == binary and
+                            child_record["pid"] != info.pid and
+                            child_record["created"] >= worker_record["created"], "Wrong registered child")
+                except BaseException:
+                    # API-created local duplicate is ours to close. Termination
+                    # remains prohibited until its fixture identity is verified.
+                    checked(close(owned.value), "Close unverified owned duplicate")
+                    raise
+                child_handle = owned.value
                 require(wait(child_handle, 0) == 258, "Child died before real guard")
                 atomic_json(output / "registration-ack.json", {"binding": binding, "child": child_record})
             status = wait(info.process, 0)

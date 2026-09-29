@@ -5,11 +5,11 @@
 [G03S](../../goals/WBP-UPSTREAM-0158-G03S-FIXTURE-HOST-CONTRACT-001.md) adds
 `scripts/validate-source.ps1` for G03. Supply exact clean source commit/tree,
 Python/just/cargo/toolchain/cache/dependency paths, target directory and a new
-external output directory. Its default selection is both PTY and daemon libraries;
-use `-FocusedCount 68` for this train. Compile and run through pinned nextest and
+external output directory. Focused mode requires both complete PTY and daemon
+libraries and unconditionally requires 68 pass/zero skips. Compile and run through pinned nextest and
 `just test`; the native phase re-executes only the exact selected positive test
 from nextest metadata, then nextest executes its real bound-receipt assertion.
-Pass `-TestArgs @()` for the Owner-approved complete default suite, rebuilding and
+Pass `-FullSuite` for the Owner-approved complete default suite, rebuilding and
 regenerating evidence for that build scope. Never substitute direct `cargo test`.
 
 The one-shot controller proves worker/child no-Job membership with native APIs,
@@ -20,6 +20,10 @@ the spawn-to-registration crash interval. This changes no product guard or Job
 policy. Normal source cleanup drains only that child's debug events, closes
 debug image files, kills/reaps/drops the original Tokio Child, then writes its
 receipt. Missing or mismatched receipts fail the nextest parent and overall run.
+The worker publishes its original child handle and holds that Child while awaiting
+registration. The controller duplicates it from its original worker process
+handle directly into itself, verifies the duplicate, and acknowledges before the
+guard. Worker crashes cannot leave an unpublished remote target handle.
 
 CI exercises disposable synthetic workers and required rejection/cleanup faults.
 Its receipts are explicitly `HARNESS_SYNTHETIC_FIXTURE` and cannot qualify the

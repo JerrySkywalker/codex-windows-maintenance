@@ -41,10 +41,11 @@ class SourceFixtureHostTests(unittest.TestCase):
         self.assertFalse(cleanup["candidateGuardAcceptance"])
 
     def test_registration_failure_crash_and_timeout_reject_acceptance(self):
-        for fault in ("registration-failure", "crash-before-registration", "crash-after-registration", "timeout"):
+        for fault in ("registration-failure", "crash-before-debug-check", "crash-before-registration",
+                      "crash-during-registration", "crash-after-registration", "timeout"):
             with self.subTest(fault=fault):
                 output = Path(self.root.name) / fault
-                with self.assertRaises((ValueError, TimeoutError)):
+                with self.assertRaises((ValueError, TimeoutError, OSError)):
                     run_host(self.binary, self.binding(), output, timeout=2,
                              synthetic_args=[], fault=fault)
                 self.assertFalse((output / "controller-receipt.json").exists())
@@ -52,7 +53,7 @@ class SourceFixtureHostTests(unittest.TestCase):
                 self.assertFalse(cleanup["completed"])
                 self.assertEqual(cleanup["errors"], [])
                 self.assertFalse(cleanup["candidateGuardAcceptance"])
-                if fault == "crash-before-registration":
+                if fault in ("crash-before-debug-check", "crash-before-registration", "crash-during-registration"):
                     self.assertEqual(cleanup["faultObservation"]["wait"], 0)
                     self.assertTrue(cleanup["faultObservation"]["handleClosed"])
                     self.assertFalse(cleanup["faultObservation"]["childTerminationUsed"])

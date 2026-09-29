@@ -28,13 +28,33 @@ def invoke(command, cwd, env, log, *, machine_json=False):
     require(result.returncode == 0, f"Required source command failed; see {log}")
 
 
+FOCUSED_SELECTION = ["-p", "codex-utils-pty", "-p", "codex-app-server-daemon", "--lib"]
+
+
+def validate_selection(test_args, full_suite=False):
+    require(test_args == ([] if full_suite else FOCUSED_SELECTION),
+            "Focused validation requires both complete libraries; full suite requires default selection")
+
+
+def validate_accounting(text, full_suite=False):
+    require(re.search(r"PASS.*" + re.escape(TEST_NAME), text), "Positive nextest parent assertion did not pass")
+    summaries = re.findall(r"(\d+) tests run: (\d+) passed(?:[^\n]*?), (\d+) skipped", text)
+    require(bool(summaries), "Nextest result accounting is missing")
+    total, passed, skipped = map(int, summaries[-1])
+    if full_suite:
+        require(total > 68 and total == passed, "Complete default suite did not pass")
+    else:
+        require((total, passed, skipped) == (68, 68, 0), "Focused Rust accounting mismatch/skip")
+    return {"testsRun": total, "passed": passed, "skipped": skipped}
+
+
 def main():
     parser = argparse.ArgumentParser()
     for name in ("source", "commit", "tree", "just", "cargo", "toolchain", "cargo-home",
                  "rustup-home", "target-dir", "output"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--dependency-path", action="append", default=[])
-    parser.add_argument("--focused-count", type=int)
+    parser.add_argument("--full-suite", action="store_true")
     parser.add_argument("test_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     source, output = Path(args.source).resolve(), Path(args.output).resolve()
@@ -58,6 +78,7 @@ def main():
     git(source, "merge-base", "--is-ancestor", train["targetUpstream"]["commit"], args.commit)
     output.mkdir(parents=True)
     test_args = args.test_args[1:] if args.test_args[:1] == ["--"] else args.test_args
+    validate_selection(test_args, args.full_suite)
     require(not any(arg in test_args for arg in ("--no-run", "--no-tests", "--ignore-default-filter")),
             "Source wrapper cannot replace execution or suppress discovery")
     require("--all-features" not in test_args, "All-features requires a separately justified workflow")
@@ -68,7 +89,7 @@ def main():
     env.update(PATH=os.pathsep.join(map(str, dependency_dirs)), CARGO_HOME=args.cargo_home,
                RUSTUP_HOME=args.rustup_home, RUSTUP_TOOLCHAIN=args.toolchain,
                CARGO_TARGET_DIR=str(Path(args.target_dir).resolve()), CARGO_HTTP_TIMEOUT="60",
-               CARGO_NET_RETRY="1", CARGO_NET_GIT_FETCH_WITH_CLI="true")
+               CARGO_NET_RETRY="1", CARGO_NET_GIT_FETCH_WITH_CLI="true", NEXTEST_PROFILE="local")
     nextest = shutil.which("cargo-nextest.exe", path=env["PATH"])
     require(nextest is not None, "Explicit pinned nextest dependency required")
     invoke([args.cargo, "nextest", "--version"], source / "codex-rs", env, output / "nextest-version.log")
@@ -102,19 +123,16 @@ def main():
     invoke([args.just, "test", "--locked", *test_args, "--status-level", "all", "--final-status-level", "all"],
            source, env, output / "nextest-run.log")
     text = (output / "nextest-run.log").read_text(encoding="utf-8", errors="replace")
-    require(re.search(r"PASS.*" + re.escape(TEST_NAME), text), "Positive nextest parent assertion did not pass")
-    if args.focused_count is not None:
-        summaries = re.findall(r"(\d+) tests run: (\d+) passed(?:[^\n]*?), (\d+) skipped", text)
-        require(summaries and tuple(map(int, summaries[-1])) ==
-                (args.focused_count, args.focused_count, 0), "Focused Rust accounting mismatch/skip")
+    accounting = validate_accounting(text, args.full_suite)
     require(sha(binary) == binding["binarySha256"], "Nextest rebuilt/changed the native-proven binary")
     verify_source()
     receipt, envelope = (read_json(native / name) for name in ("worker-receipt.json", "controller-receipt.json"))
     validate_completed(envelope, receipt, binding)
     require(read_json(native / "host-cleanup.json")["errors"] == [], "Unknown native cleanup")
-    atomic_json(output / "validation.json", {"status": "SOURCE_NATIVE_AND_NEXTEST_VALIDATION_PASS",
+    status = "SOURCE_NATIVE_AND_DEFAULT_WORKSPACE_NEXTEST_PASS" if args.full_suite else "SOURCE_NATIVE_AND_FOCUSED_68_NEXTEST_PASS"
+    atomic_json(output / "validation.json", {"status": status,
                 "binding": binding, "nextestLogSha256": sha(output / "nextest-run.log"),
-                "focusedExpected": args.focused_count, "packageQualification": False})
+                "accounting": accounting, "fullSuite": args.full_suite, "packageQualification": False})
 
 
 if __name__ == "__main__":

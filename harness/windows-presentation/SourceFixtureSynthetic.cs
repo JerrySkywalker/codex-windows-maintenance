@@ -17,8 +17,6 @@ class SourceFixtureSynthetic {
     [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
     [DllImport("kernel32.dll")] static extern int GetCurrentProcessId();
     [DllImport("kernel32.dll")] static extern void SetLastError(uint error);
-    [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr OpenProcess(uint rights,bool inherit,int pid);
-    [DllImport("kernel32.dll",SetLastError=true)] static extern bool DuplicateHandle(IntPtr source,IntPtr handle,IntPtr target,out IntPtr copy,uint access,bool inherit,uint options);
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool TerminateProcess(IntPtr process,uint code);
     [DllImport("kernel32.dll",SetLastError=true)] static extern uint WaitForSingleObject(IntPtr process,uint ms);
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
@@ -56,24 +54,27 @@ class SourceFixtureSynthetic {
     }
     static int Main(string[] args) {
         Root=Environment.GetEnvironmentVariable("CODEX_TEST_NATIVE_DIR");
-        PI child=new PI(); IntPtr controller=IntPtr.Zero;
+        PI child=new PI();
         try {
             object binding=Json.DeserializeObject(File.ReadAllText(Path.Combine(Root,"binding.json")));
             var worker=Identity(GetCurrentProcess(),GetCurrentProcessId());
             SI si=new SI(); si.cb=Marshal.SizeOf(typeof(SI));
             Check(CreateProcessW(Exe,new StringBuilder("\""+Exe+"\""),IntPtr.Zero,IntPtr.Zero,false,0x0100000e,IntPtr.Zero,Root,ref si,out child),"SpawnDebugOwnedSuspendedChild");
-            Check(DebugSetProcessKillOnExit(true),"DebugSetProcessKillOnExit");
             var identity=Identity(child.process,child.pid);
             string fault=Environment.GetEnvironmentVariable("CODEX_TEST_NATIVE_FAULT");
+            if(fault=="crash-before-debug-check") {
+                Write("fault-child.json",identity); Await("fault-observer-ack.json"); Environment.Exit(91);
+            }
+            Check(DebugSetProcessKillOnExit(true),"DebugSetProcessKillOnExit");
             if(fault=="registration-failure") throw new Exception("Synthetic registration failure");
             if(fault=="crash-before-registration") {
                 Write("fault-child.json",identity); Await("fault-observer-ack.json"); Environment.Exit(91);
             }
-            int controllerPid=int.Parse(Environment.GetEnvironmentVariable("CODEX_TEST_NATIVE_CONTROLLER_PID"));
-            controller=OpenProcess(0x1000|0x40,false,controllerPid); Check(controller!=IntPtr.Zero,"OpenController");
-            Check(Created(controller)==long.Parse(Environment.GetEnvironmentVariable("CODEX_TEST_NATIVE_CONTROLLER_CREATED")),"ControllerIdentity");
-            IntPtr copy; Check(DuplicateHandle(GetCurrentProcess(),child.process,controller,out copy,0,false,2),"TransferChildHandle");
-            Write("registration.json",new Dictionary<string,object>{{"binding",binding},{"worker",worker},{"child",identity},{"handle",copy.ToInt64()}});
+            if(fault=="crash-during-registration") {
+                Write("fault-child.json",identity); Await("fault-observer-ack.json");
+            }
+            Write("registration.json",new Dictionary<string,object>{{"binding",binding},{"worker",worker},{"child",identity},{"sourceHandle",child.process.ToInt64()}});
+            if(fault=="crash-during-registration") Environment.Exit(91);
             Await("registration-ack.json");
             if(fault=="crash-after-registration") Environment.Exit(91);
             if(fault=="timeout") Thread.Sleep(60000);
@@ -83,6 +84,6 @@ class SourceFixtureSynthetic {
                 {"cleanup",new Dictionary<string,object>{{"killed",true},{"reaped",true},{"originalChildHandleClosed",true},{"debugImageHandlesClosed",true}}}});
             return 0;
         } catch(Exception ex) { File.WriteAllText(Path.Combine(Root,"worker-error.txt"),ex.ToString()); return 1; }
-        finally { Cleanup(ref child); if(controller!=IntPtr.Zero) Check(CloseHandle(controller),"CloseController"); }
+        finally { Cleanup(ref child); }
     }
 }

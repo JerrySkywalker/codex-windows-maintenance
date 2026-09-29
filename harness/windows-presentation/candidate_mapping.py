@@ -57,7 +57,7 @@ def load(path, mode="qualify"):
     require(set(mapping) == FIELDS, "Incomplete or unknown candidate mapping fields")
     require(type(mapping["schemaVersion"]) is int and mapping["schemaVersion"] == 1 and mapping["kind"] == "UNRELEASED_CANDIDATE",
             "Candidate cannot claim released status")
-    train = read_json(ROOT / "goals/WBP-UPSTREAM-0158-PORT-TRAIN-001.manifest.json")
+    train = read_json(ROOT / "goals/WBP-ROLLING-0159-FAST-FORWARD-001.manifest.json")
     require(mapping["goalId"] == train["goalId"], "Candidate goal not admitted")
     target = train["targetUpstream"]
     require((mapping["upstreamVersion"], mapping["upstreamCommit"]) ==

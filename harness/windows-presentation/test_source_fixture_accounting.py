@@ -29,7 +29,11 @@ class SourceFixtureAccountingTests(unittest.TestCase):
             validate_selection(FOCUSED_SELECTION, full_suite=True)
         with self.assertRaises(ValueError):
             validate_accounting(self.log(68, 68, 0), full_suite=True)
-        self.assertEqual(validate_accounting(self.log(1000, 1000, 2), full_suite=True),
+        with self.assertRaises(ValueError):
+            validate_accounting(self.log(1000, 1000, 2), full_suite=True)
+        with self.assertRaises(ValueError):
+            validate_accounting(self.log(1000, 1000, 2), full_suite=True, expected_skips=1)
+        self.assertEqual(validate_accounting(self.log(1000, 1000, 2), full_suite=True, expected_skips=2),
                          {"testsRun": 1000, "passed": 1000, "skipped": 2})
 
 

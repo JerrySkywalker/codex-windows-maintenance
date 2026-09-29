@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 
 from candidate_mapping import contained, git, read_json, require, sha
@@ -36,13 +37,14 @@ def validate_selection(test_args, full_suite=False):
             "Focused validation requires both complete libraries; full suite requires default selection")
 
 
-def validate_accounting(text, full_suite=False):
+def validate_accounting(text, full_suite=False, expected_skips=None):
     require(re.search(r"PASS.*" + re.escape(TEST_NAME), text), "Positive nextest parent assertion did not pass")
     summaries = re.findall(r"(\d+) tests run: (\d+) passed(?:[^\n]*?), (\d+) skipped", text)
     require(bool(summaries), "Nextest result accounting is missing")
     total, passed, skipped = map(int, summaries[-1])
     if full_suite:
-        require(total > 68 and total == passed, "Complete default suite did not pass")
+        require(total > 68 and total == passed and expected_skips is not None and
+                skipped == expected_skips, "Complete default suite or ignored-test accounting mismatch")
     else:
         require((total, passed, skipped) == (68, 68, 0), "Focused Rust accounting mismatch/skip")
     return {"testsRun": total, "passed": passed, "skipped": skipped}
@@ -55,6 +57,7 @@ def main():
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--dependency-path", action="append", default=[])
     parser.add_argument("--full-suite", action="store_true")
+    parser.add_argument("--durable-job", type=Path)
     parser.add_argument("test_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     source, output = Path(args.source).resolve(), Path(args.output).resolve()
@@ -74,7 +77,20 @@ def main():
                 git(source, "show", "-s", "--format=%T", "HEAD") == args.tree and
                 not git(source, "status", "--porcelain=v1", "--untracked-files=all"), "Source changed or dirty")
     verify_source()
-    train = read_json(maintenance / "goals/WBP-UPSTREAM-0158-PORT-TRAIN-001.manifest.json")
+    if args.full_suite:
+        require(args.durable_job is not None, "Full qualification requires a durable external job")
+        from validation_job import verify_receipt
+        # The worker publishes the spawned child's exact identity immediately.
+        for _ in range(100):
+            receipt = read_json(args.durable_job / "receipt.json")
+            if receipt.get("childPid") == os.getpid():
+                break
+            time.sleep(0.05)
+        job, _ = verify_receipt(args.durable_job, "RUNNING", executing=True)
+        require(job["lane"] == "STABLE" and job["source"]["commit"] == args.commit and
+                job["source"]["tree"] == args.tree,
+                "Running bound Stable job required")
+    train = read_json(maintenance / "goals/WBP-ROLLING-0159-FAST-FORWARD-001.manifest.json")
     git(source, "merge-base", "--is-ancestor", train["targetUpstream"]["commit"], args.commit)
     output.mkdir(parents=True)
     test_args = args.test_args[1:] if args.test_args[:1] == ["--"] else args.test_args
@@ -100,6 +116,10 @@ def main():
            source / "codex-rs", env, output / "nextest-list.json", machine_json=True)
     metadata = read_json(output / "nextest-list.json")
     suites = metadata["rust-suites"]
+    ignored = sorted(({"binaryId": binary_id, "testName": test_name}
+                      for binary_id, suite in suites.items()
+                      for test_name, case in suite["testcases"].items() if case["ignored"]),
+                     key=lambda entry: (entry["binaryId"], entry["testName"]))
     matches = [suite for suite in suites.values() if suite["package-name"] == "codex-app-server-daemon"
                and TEST_NAME in suite["testcases"]]
     require(len(matches) == 1, "Ambiguous or missing exact daemon test binary")
@@ -123,16 +143,20 @@ def main():
     invoke([args.just, "test", "--locked", *test_args, "--status-level", "all", "--final-status-level", "all"],
            source, env, output / "nextest-run.log")
     text = (output / "nextest-run.log").read_text(encoding="utf-8", errors="replace")
-    accounting = validate_accounting(text, args.full_suite)
+    accounting = validate_accounting(text, args.full_suite,
+                                     expected_skips=len(ignored) if args.full_suite else None)
     require(sha(binary) == binding["binarySha256"], "Nextest rebuilt/changed the native-proven binary")
     verify_source()
     receipt, envelope = (read_json(native / name) for name in ("worker-receipt.json", "controller-receipt.json"))
     validate_completed(envelope, receipt, binding)
     require(read_json(native / "host-cleanup.json")["errors"] == [], "Unknown native cleanup")
-    status = "SOURCE_NATIVE_AND_DEFAULT_WORKSPACE_NEXTEST_PASS" if args.full_suite else "SOURCE_NATIVE_AND_FOCUSED_68_NEXTEST_PASS"
+    status = ("SOURCE_NATIVE_AND_DEFAULT_WORKSPACE_NEXTEST_PASS" if not ignored else
+              "SOURCE_NATIVE_AND_DEFAULT_WORKSPACE_NEXTEST_EXECUTED_PENDING_SKIP_REVIEW") if args.full_suite else "SOURCE_NATIVE_AND_FOCUSED_68_NEXTEST_PASS"
     atomic_json(output / "validation.json", {"status": status,
                 "binding": binding, "nextestLogSha256": sha(output / "nextest-run.log"),
-                "accounting": accounting, "fullSuite": args.full_suite, "packageQualification": False})
+                "accounting": accounting, "fullSuite": args.full_suite, "packageQualification": False,
+                "ignoredTestIdentities": ignored if args.full_suite else [],
+                "ignoredDiscoverySha256": sha(output / "nextest-list.json") if args.full_suite else None})
 
 
 if __name__ == "__main__":

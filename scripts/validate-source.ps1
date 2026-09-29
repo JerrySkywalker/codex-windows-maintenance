@@ -12,6 +12,7 @@ param(
     [Parameter(Mandatory)][string]$OutputDir,
     [string[]]$DependencyPath = @(),
     [switch]$FullSuite,
+    [string]$DurableJob,
     [string[]]$TestArgs = @('-p', 'codex-utils-pty', '-p', 'codex-app-server-daemon', '--lib')
 )
 $ErrorActionPreference = 'Stop'
@@ -22,8 +23,7 @@ $arguments = @('-B', (Join-Path $repoRoot 'harness/windows-presentation/source_v
     '--target-dir', $TargetDir, '--output', $OutputDir)
 foreach ($path in $DependencyPath) { $arguments += @('--dependency-path', $path) }
 if ($FullSuite) {
-    $arguments += @('--full-suite')
-    if (-not $PSBoundParameters.ContainsKey('TestArgs')) { $TestArgs = @() }
+    throw 'Full qualification must invoke source_validation.py directly as the durable job command'
 }
 $arguments += @('--') + $TestArgs
 & $Python @arguments

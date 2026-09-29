@@ -12,8 +12,8 @@ def validate_binding(binding, *, synthetic=False):
                              "sourceTree", "testName", "binarySha256"}, "Unknown binding fields")
     require(type(binding["schemaVersion"]) is int and binding["schemaVersion"] == 1,
             "Unknown fixture schema")
-    kind = "HARNESS_SYNTHETIC_FIXTURE" if synthetic else "SOURCE_GUARD_NATIVE_FIXTURE"
-    require(binding["kind"] == kind, "Synthetic fixture cannot prove source guard")
+    kinds = {"HARNESS_SYNTHETIC_FIXTURE", "HARNESS_PROTOCOL_ONLY"} if synthetic else {"SOURCE_GUARD_NATIVE_FIXTURE"}
+    require(binding["kind"] in kinds, "Synthetic fixture cannot prove source guard")
     require(str(uuid.UUID(binding["runId"])) == binding["runId"], "Invalid run ID")
     require(binding["testName"] == TEST_NAME, "Wrong selected source test")
     for key, length in (("sourceCommit", 40), ("sourceTree", 40), ("binarySha256", 64)):
@@ -21,7 +21,7 @@ def validate_binding(binding, *, synthetic=False):
                 re.fullmatch(f"[0-9a-f]{{{length}}}", binding[key]), f"Invalid {key}")
 
 
-def validate_identity(identity):
+def validate_identity(identity, *, protocol_only=False):
     require(set(identity) == {"pid", "created", "queryReturn", "lastError", "inJob"},
             "Incomplete process identity/API evidence")
     require(type(identity["pid"]) is int and identity["pid"] > 0 and
@@ -29,7 +29,8 @@ def validate_identity(identity):
             "Unknown process identity")
     require(type(identity["queryReturn"]) is int and identity["queryReturn"] == 1 and
             type(identity["lastError"]) is int and identity["lastError"] == 0 and
-            identity["inJob"] is False, "Failed/unknown/residual Job membership")
+            type(identity["inJob"]) is bool, "Failed/unknown Job query")
+    require(protocol_only or identity["inJob"] is False, "Residual Job membership")
 
 
 def validate_worker(receipt, binding, *, synthetic=False):
@@ -39,11 +40,12 @@ def validate_worker(receipt, binding, *, synthetic=False):
     require(receipt["binding"] == binding, "Stale or mismatched worker binding")
     require(isinstance(receipt["binaryBlake3"], str) and
             re.fullmatch("[0-9a-f]{64}", receipt["binaryBlake3"]), "Missing worker fingerprint")
+    protocol_only = synthetic and binding["kind"] == "HARNESS_PROTOCOL_ONLY"
     for key in ("worker", "child"):
-        validate_identity(receipt[key])
+        validate_identity(receipt[key], protocol_only=protocol_only)
     require(receipt["worker"]["pid"] != receipt["child"]["pid"], "Worker is its own child")
     require(receipt["child"]["created"] >= receipt["worker"]["created"], "Reused child identity")
-    expected = "SYNTHETIC_ACCEPTED" if synthetic else "ACCEPTED"
+    expected = "HARNESS_PROTOCOL_EXERCISED" if protocol_only else ("SYNTHETIC_ACCEPTED" if synthetic else "ACCEPTED")
     require(receipt["guard"] == expected, "Actual source guard did not accept")
     require(type(receipt["debugKillOnExitReturn"]) is int and
             receipt["debugKillOnExitReturn"] == 1, "Crash cleanup backstop unproven")

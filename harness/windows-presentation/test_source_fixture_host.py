@@ -5,10 +5,12 @@ import subprocess
 import tempfile
 import unittest
 import uuid
+from unittest.mock import patch
 
 from candidate_mapping import read_json, sha
 from source_fixture_contract import TEST_NAME
 from source_fixture_host import run_host
+import source_fixture_host
 
 
 class SourceFixtureHostTests(unittest.TestCase):
@@ -28,7 +30,7 @@ class SourceFixtureHostTests(unittest.TestCase):
         cls.root.cleanup()
 
     def binding(self):
-        return {"schemaVersion": 1, "kind": "HARNESS_SYNTHETIC_FIXTURE", "runId": str(uuid.uuid4()),
+        return {"schemaVersion": 1, "kind": "HARNESS_PROTOCOL_ONLY", "runId": str(uuid.uuid4()),
                 "sourceCommit": "1" * 40, "sourceTree": "2" * 40,
                 "testName": TEST_NAME, "binarySha256": sha(self.binary)}
 
@@ -39,6 +41,22 @@ class SourceFixtureHostTests(unittest.TestCase):
         cleanup = read_json(output / "host-cleanup.json")
         self.assertEqual(cleanup["errors"], [])
         self.assertFalse(cleanup["candidateGuardAcceptance"])
+        self.assertEqual(cleanup["scope"], "HARNESS_PROTOCOL_ONLY")
+
+    def test_source_launch_restriction_never_falls_back(self):
+        output = Path(self.root.name) / "source-host-restriction"
+        binding = self.binding()
+        binding["kind"] = "SOURCE_GUARD_NATIVE_FIXTURE"
+        def blocked(*args):
+            source_fixture_host.c.set_last_error(5)
+            return 0
+        with patch.object(source_fixture_host, "create", side_effect=blocked) as creation:
+            with self.assertRaises(OSError):
+                run_host(self.binary, binding, output)
+        self.assertEqual(creation.call_count, 1)
+        self.assertTrue(creation.call_args.args[5] & 0x01000000)
+        self.assertFalse((output / "controller-receipt.json").exists())
+        self.assertFalse(read_json(output / "host-cleanup.json")["candidateGuardAcceptance"])
 
     def test_registration_failure_crash_and_timeout_reject_acceptance(self):
         for fault in ("registration-failure", "crash-before-debug-check", "crash-before-registration",

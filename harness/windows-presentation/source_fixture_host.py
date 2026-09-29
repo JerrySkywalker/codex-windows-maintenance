@@ -66,7 +66,7 @@ def checked(ok, operation):
         raise OSError(c.get_last_error(), operation)
 
 
-def identity(handle):
+def identity(handle, *, protocol_only=False):
     fields = [w.FILETIME() for _ in range(4)]
     checked(process_times(handle, *[c.byref(t) for t in fields]), "GetProcessTimes")
     pid = pid_of(handle)
@@ -76,9 +76,9 @@ def identity(handle):
     result = in_job(handle, None, c.byref(member))
     error = c.get_last_error()
     checked(result, "IsProcessInJob")
-    require(not member.value, "Native fixture retains a Job")
+    require(protocol_only or not member.value, "Native SOURCE fixture retains a Job")
     return {"pid": pid, "created": (fields[0].dwHighDateTime << 32) | fields[0].dwLowDateTime,
-            "queryReturn": result, "lastError": error, "inJob": False}
+            "queryReturn": result, "lastError": error, "inJob": bool(member.value)}
 
 
 def image(handle):
@@ -115,6 +115,7 @@ def isolated_env(home, extra):
 def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault="normal"):
     synthetic = synthetic_args is not None
     validate_binding(binding, synthetic=synthetic)
+    protocol_only = synthetic and binding["kind"] == "HARNESS_PROTOCOL_ONLY"
     binary, output = Path(binary).resolve(), Path(output).resolve()
     require(binary.is_file() and sha(binary) == binding["binarySha256"], "Worker binary changed")
     output.mkdir(parents=True, exist_ok=False)
@@ -127,6 +128,7 @@ def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault=
         "CODEX_TEST_NATIVE_ROLE": "worker", "CODEX_TEST_NATIVE_DIR": str(output),
         "CODEX_TEST_NATIVE_CONTROLLER_PID": str(os.getpid()),
         "CODEX_TEST_NATIVE_CONTROLLER_CREATED": str(controller_created),
+        "CODEX_TEST_NATIVE_PROTOCOL_ONLY": "1" if protocol_only else "0",
         "CODEX_TEST_NATIVE_FAULT": fault})
     env_buffer = c.create_unicode_buffer("\0".join(f"{key}={value}" for key, value in
                                       sorted(env.items(), key=lambda pair: pair[0].upper())) + "\0\0")
@@ -157,12 +159,15 @@ def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault=
                 handle_list = (w.HANDLE * 3)(*handles)
                 checked(update_attributes(startup.attributes, 0, 0x20002, handle_list,
                                           c.sizeof(handle_list), None, None), "Restrict inherited handles")
+                # Only explicitly labeled synthetic protocol mode inherits Jobs.
+                # SOURCE makes one clean launch attempt and never falls back.
+                launch_flags = 0x08080404 if protocol_only else 0x09080404
                 checked(create(str(binary), c.create_unicode_buffer(subprocess.list2cmdline(args)),
-                               None, None, True, 0x09080404, env_buffer, str(output),
+                               None, None, True, launch_flags, env_buffer, str(output),
                                c.byref(startup), c.byref(info)), "Launch one-shot breakaway worker")
             finally:
                 delete_attributes(startup.attributes)
-        worker_record = identity(info.process)
+        worker_record = identity(info.process, protocol_only=protocol_only)
         require(worker_record["pid"] == info.pid and image(info.process) == binary, "Wrong worker image")
         checked(resume(info.thread) != 0xffffffff, "Resume clean worker")
         checked(close(info.thread), "Close original worker thread")
@@ -180,7 +185,7 @@ def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault=
                     handle = open_process(0x1000 | 0x100000, False, observed["pid"])
                     checked(handle, "Open exact synthetic observer child")
                     try:
-                        require(identity(handle) == observed and image(handle) == binary,
+                        require(identity(handle, protocol_only=protocol_only) == observed and image(handle) == binary,
                                 "Synthetic child identity mismatch")
                         fault_observer_handle = handle
                         fault_observation = {"child": observed, "childTerminationUsed": False}
@@ -201,7 +206,7 @@ def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault=
                 checked(duplicate(info.process, source_handle, current(), c.byref(owned),
                                   0, False, 2), "Duplicate original worker-owned child handle")
                 try:
-                    child_record = identity(owned.value)
+                    child_record = identity(owned.value, protocol_only=protocol_only)
                     require(record["child"] == child_record and image(owned.value) == binary and
                             child_record["pid"] != info.pid and
                             child_record["created"] >= worker_record["created"], "Wrong registered child")
@@ -274,5 +279,5 @@ def run_host(binary, binding, output, *, timeout=30, synthetic_args=None, fault=
                     "worker": worker_record, "child": child_record, "errors": cleanup_errors,
                     "faultObservation": fault_observation,
                     "candidateGuardAcceptance": completed and not synthetic,
-                    "scope": "synthetic harness only" if synthetic else "native source fixture"})
+                    "scope": "HARNESS_PROTOCOL_ONLY" if protocol_only else ("synthetic harness only" if synthetic else "native source fixture")})
         require(not cleanup_errors, f"Native cleanup failed: {cleanup_errors}")

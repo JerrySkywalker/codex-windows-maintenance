@@ -24,11 +24,12 @@ class SourceFixtureSynthetic {
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool WaitForDebugEvent(IntPtr debugEvent,uint ms);
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool ContinueDebugEvent(int pid,int tid,uint status);
     static JavaScriptSerializer Json=new JavaScriptSerializer();
+    static bool ProtocolOnly=Environment.GetEnvironmentVariable("CODEX_TEST_NATIVE_PROTOCOL_ONLY")=="1";
     static string Root,Exe=Assembly.GetExecutingAssembly().Location;
     static void Check(bool ok,string name) { if(!ok) throw new Exception(name+" win32="+Marshal.GetLastWin32Error()); }
     static long Created(IntPtr handle) { long a,b,c,d; Check(GetProcessTimes(handle,out a,out b,out c,out d),"GetProcessTimes"); return a; }
     static Dictionary<string,object> Identity(IntPtr handle,int pid) {
-        bool member; SetLastError(0); bool ok=IsProcessInJob(handle,IntPtr.Zero,out member); int error=Marshal.GetLastWin32Error(); Check(ok,"IsProcessInJob"); Check(!member,"NoJob");
+        bool member; SetLastError(0); bool ok=IsProcessInJob(handle,IntPtr.Zero,out member); int error=Marshal.GetLastWin32Error(); Check(ok,"IsProcessInJob"); Check(ProtocolOnly||!member,"NoJob");
         return new Dictionary<string,object>{{"pid",pid},{"created",Created(handle)},{"queryReturn",ok?1:0},{"lastError",error},{"inJob",member}};
     }
     static void Write(string name,object value) { string path=Path.Combine(Root,name); File.WriteAllText(path+".tmp",Json.Serialize(value)); File.Move(path+".tmp",path); }
@@ -59,7 +60,7 @@ class SourceFixtureSynthetic {
             object binding=Json.DeserializeObject(File.ReadAllText(Path.Combine(Root,"binding.json")));
             var worker=Identity(GetCurrentProcess(),GetCurrentProcessId());
             SI si=new SI(); si.cb=Marshal.SizeOf(typeof(SI));
-            Check(CreateProcessW(Exe,new StringBuilder("\""+Exe+"\""),IntPtr.Zero,IntPtr.Zero,false,0x0100000e,IntPtr.Zero,Root,ref si,out child),"SpawnDebugOwnedSuspendedChild");
+            Check(CreateProcessW(Exe,new StringBuilder("\""+Exe+"\""),IntPtr.Zero,IntPtr.Zero,false,ProtocolOnly?0x0eu:0x0100000eu,IntPtr.Zero,Root,ref si,out child),"SpawnDebugOwnedSuspendedChild");
             var identity=Identity(child.process,child.pid);
             string fault=Environment.GetEnvironmentVariable("CODEX_TEST_NATIVE_FAULT");
             if(fault=="crash-before-debug-check") {
@@ -80,7 +81,7 @@ class SourceFixtureSynthetic {
             if(fault=="timeout") Thread.Sleep(60000);
             Cleanup(ref child);
             Write("worker-receipt.json",new Dictionary<string,object>{{"binding",binding},{"binaryBlake3",new string('0',64)},
-                {"worker",worker},{"child",identity},{"guard","SYNTHETIC_ACCEPTED"},{"debugKillOnExitReturn",1},{"testResult","PASSED"},
+                {"worker",worker},{"child",identity},{"guard",ProtocolOnly?"HARNESS_PROTOCOL_EXERCISED":"SYNTHETIC_ACCEPTED"},{"debugKillOnExitReturn",1},{"testResult","PASSED"},
                 {"cleanup",new Dictionary<string,object>{{"killed",true},{"reaped",true},{"originalChildHandleClosed",true},{"debugImageHandlesClosed",true}}}});
             return 0;
         } catch(Exception ex) { File.WriteAllText(Path.Combine(Root,"worker-error.txt"),ex.ToString()); return 1; }

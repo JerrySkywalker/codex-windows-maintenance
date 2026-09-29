@@ -25,9 +25,15 @@ registration. The controller duplicates it from its original worker process
 handle directly into itself, verifies the duplicate, and acknowledges before the
 guard. Worker crashes cannot leave an unpublished remote target handle.
 
-CI exercises disposable synthetic workers and required rejection/cleanup faults.
-Its receipts are explicitly `HARNESS_SYNTHETIC_FIXTURE` and cannot qualify the
-Rust source guard. G03 source validation does not build or qualify a package;
+CI exercises disposable inherited-Job synthetic workers and every required
+protocol/cleanup fault, recording truthful Job membership. Their kind is
+`HARNESS_PROTOCOL_ONLY`, and their guard label is `HARNESS_PROTOCOL_EXERCISED`;
+SOURCE validation unconditionally rejects them. CI also tests fail-closed SOURCE
+host rejection and records actual hosted Job/API capability diagnostics.
+SOURCE makes exactly one clean launch attempt and never falls back to this
+protocol mode. Actual clean Rust-worker guard/fault proof remains mandatory in
+G03; every original 68-case assertion must execute with zero skips.
+G03 source validation does not build or qualify a package;
 the G04 package workflow below remains separate.
 
 ## Candidate package mapping

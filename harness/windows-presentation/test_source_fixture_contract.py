@@ -107,6 +107,22 @@ class SourceFixtureContractTests(unittest.TestCase):
     def test_synthetic_is_not_guard_acceptance(self):
         self.reject_receipt(["guard"], "SYNTHETIC_ACCEPTED")
 
+    def test_protocol_receipts_are_truthful_and_never_source_proof(self):
+        binding = copy.deepcopy(self.binding)
+        binding["kind"] = "HARNESS_PROTOCOL_ONLY"
+        receipt = copy.deepcopy(self.receipt)
+        receipt["binding"] = binding
+        receipt["guard"] = "HARNESS_PROTOCOL_EXERCISED"
+        receipt["worker"]["inJob"] = True
+        receipt["child"]["inJob"] = True
+        envelope = copy.deepcopy(self.envelope)
+        envelope.update(binding=binding, workerReceipt=receipt, worker=receipt["worker"], child=receipt["child"])
+        validate_completed(envelope, receipt, binding, synthetic=True)
+        with self.assertRaises(ValueError):
+            validate_completed(envelope, receipt, binding)
+        with self.assertRaises(ValueError):
+            validate_completed(envelope, receipt, self.binding)
+
 
 if __name__ == "__main__":
     unittest.main()
